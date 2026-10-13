@@ -41,7 +41,7 @@ This is the target architecture, not a claim that these components are already i
 
 - **Frontend:** React + TypeScript
 - **Control plane:** Java + Spring Boot
-- **Metadata:** PostgreSQL
+- **Metadata:** PostgreSQL (H2 is currently used for initial local development)
 - **First runtime:** Docker
 - **Source control and CI:** GitHub and GitHub Actions
 - **Future runtime targets:** Cloud Run and Kubernetes, added only when the core workflow justifies them
@@ -57,9 +57,13 @@ This is the target architecture, not a claim that these components are already i
 
 ## Current status
 
-**Stage 0 — scope and architecture.** The repository currently holds the product definition and planning notes. The application implementation has not started.
+**Working locally:** the Spring Boot 4.1.1 application runs on Oracle JDK 25, and `GET /api/v1/system` returns Foundry's name, status, and version. The Maven Wrapper build/test command has succeeded from the terminal.
 
-Track the first milestone in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
+**Next milestone:** persist registered applications and deployment records, beginning with a project-registration API backed by the development database.
+
+The deployment worker, React dashboard, CI pipeline, and runtime adapters are planned—not yet implemented.
+
+Track the V1 scope and implementation progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
 
 ## License
 
