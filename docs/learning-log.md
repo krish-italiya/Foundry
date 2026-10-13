@@ -64,5 +64,22 @@ gcloud run revisions list --service=foundry-web --region=us-central1
 - A Cloud Run service and a Compute Engine VM are separate resources, but they can still share the same GCP project and billing dependency.
 - Budget alerts are not hard spending caps; always check billing state and clean up unused resources.
 
+## Entry: First Foundry API endpoint
+
+### Implemented and verified
+- Generated a Spring Boot 4.1.1 Maven project using Oracle JDK 25.
+- Ran the Maven Wrapper test/build command successfully from the terminal, even though IntelliJ's Maven synchronization reported a separate Guice importer error.
+- Added `SystemController` with `GET /api/v1/system`.
+- Verified the local endpoint returned HTTP 200 and JSON containing `name: Foundry`, `status: UP`, and `version: 0.1.0`.
+
+### New concepts
+- **Control plane:** the part of a platform that accepts management requests and tracks system state.
+- **API endpoint:** a specific operation exposed at a URL and HTTP method.
+- **REST controller:** a Spring component that maps HTTP requests to Java methods and serializes returned data.
+- **JSON:** a text format for exchanging structured data between programs.
+- **Maven Wrapper:** project-provided scripts that run the configured Maven version.
+- **Health endpoint:** an endpoint used to report application health/readiness.
+- **Git commit / push:** a commit records a change locally; push sends commits to the remote repository.
+
 ### Next milestone
-Start implementation of the Foundry control plane. Define one narrow vertical slice: register a trusted sample app, request a deployment, record its state, build/run its container through a controlled runtime, check health, and expose status/logs. Do not implement arbitrary public code execution, Kubernetes, or advanced distributed infrastructure in the first slice.
+Add a project-registration API backed by the development database. Validate input, persist the project record, return its identifier, and add tests. Only after that should we model deployment records and the deployment lifecycle.
