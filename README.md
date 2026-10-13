@@ -20,7 +20,7 @@ The project is **not tied to a single cloud provider**. The first deployment tar
 React + TypeScript dashboard
             |
             v
-Spring Boot control-plane API ---- PostgreSQL
+Spring Boot control-plane API ---- PostgreSQL (target)
             |
             v
 Deployment job / worker
@@ -35,16 +35,30 @@ Docker host (first target)
 Deployed application + health check + logs
 ```
 
-This is the target architecture, not a claim that these components are already implemented.
+This is the target architecture, not a claim that these components are already implemented. Initial local development currently uses H2 instead of PostgreSQL.
 
 ## Initial technology choices
 
 - **Frontend:** React + TypeScript
 - **Control plane:** Java + Spring Boot
-- **Metadata:** PostgreSQL (H2 is currently used for initial local development)
+- **Metadata:** H2 for current local development; PostgreSQL is the planned durable database
 - **First runtime:** Docker
 - **Source control and CI:** GitHub and GitHub Actions
 - **Future runtime targets:** Cloud Run and Kubernetes, added only when the core workflow justifies them
+
+## Current implementation
+
+**Working locally:**
+- Spring Boot 4.1.1 on Oracle JDK 25.
+- `GET /api/v1/system` returns the service name, status, and version.
+- `POST /api/v1/projects` validates a registration request, stores the project, and returns `201 Created` with a `Location` header.
+- `GET /api/v1/projects` lists registered projects.
+- `GET /api/v1/projects/{id}` retrieves a project or returns `404 Not Found`.
+- Blank project names are rejected with `400 Bad Request`.
+- Maven tests pass, including integration tests for persistence, validation, listing, and not-found behavior.
+- `requests/projects.http` provides runnable IntelliJ HTTP Client requests and response assertions.
+
+**Not implemented yet:** deployment records, the deployment worker, runtime adapters, the React dashboard, CI workflows, and application log streaming.
 
 ## Build principles
 
@@ -54,16 +68,13 @@ This is the target architecture, not a claim that these components are already i
 - Keep the control plane separate from the component that executes deployments.
 - Do not run arbitrary untrusted workloads on the control-plane host. Isolation and access control are prerequisites before offering public deployments.
 - Add technologies only when they solve a demonstrated problem.
+- Track terminology, system-design decisions, experiments, and interview-relevant principles in the [learning log](docs/learning-log.md).
 
-## Current status
+## Next milestone
 
-**Working locally:** the Spring Boot 4.1.1 application runs on Oracle JDK 25, and `GET /api/v1/system` returns Foundry's name, status, and version. The Maven Wrapper build/test command has succeeded from the terminal.
+Model a deployment as a persisted resource with an explicit lifecycle. Define valid states and transitions before implementing the entity, API, and tests. Do not start a deployment worker until the deployment lifecycle is clear.
 
-**Next milestone:** persist registered applications and deployment records, beginning with a project-registration API backed by the development database.
-
-The deployment worker, React dashboard, CI pipeline, and runtime adapters are planned—not yet implemented.
-
-Track the V1 scope and implementation progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
+Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
 
 ## License
 
