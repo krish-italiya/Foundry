@@ -1,6 +1,6 @@
 # Foundry Learning Log
 
-This log records concepts learned while building Foundry. Add concise entries after each session; prefer experiments and observed behavior over copied definitions.
+This log records concepts learned while building Foundry. Add concise entries after each session; prefer experiments and observed behavior over copied definitions. It also tracks practical system-design lessons that may be useful in interviews.
 
 ## Entry: Cloud VM, networking, and containers
 
@@ -29,7 +29,7 @@ This log records concepts learned while building Foundry. Add concise entries af
 - **Container:** an isolated running instance created from an image; it shares the host kernel.
 - **Port mapping:** forwarding a host port to a port in a container.
 - **Registry:** a service for storing and distributing container images.
-- **Artifact Registry:** Google's registry service used to store the `foundry-web:v1` and `foundry-web:v2` images.
+- **Artifact Registry:** Google's registry service used to store the `foundry-web:v1`, `v2`, and `v3` images.
 - **Cloud Run service:** a managed endpoint that runs a container image.
 - **Revision:** a specific deployed configuration/image version of a Cloud Run service.
 
@@ -81,19 +81,23 @@ gcloud run revisions list --service=foundry-web --region=us-central1
 - **Health endpoint:** an endpoint used to report application health/readiness.
 - **Git commit / push:** a commit records a change locally; push sends commits to the remote repository.
 
-## Entry: Project-registration data model (in progress)
+## Entry: Project registration API
 
 ### Implemented and verified
 - Added `ProjectEntity` with a generated UUID, name, repository URL, and creation timestamp.
 - Added `ProjectRepository` extending `JpaRepository<ProjectEntity, UUID>`; Spring Data JPA supplies common persistence operations.
-- Added `ProjectCreateRequest` as a Java `record` with `@NotBlank` and `@Size` constraints.
-- The Maven Wrapper tests passed after adding these classes.
-- The registration API is not implemented yet: there is no service/controller flow saving projects from an HTTP request.
+- Added `ProjectCreateRequest` with `@NotBlank` and `@Size` validation constraints, plus a separate `ProjectResponse` DTO.
+- Added `ProjectService` and `ProjectController`.
+- Implemented `POST /api/v1/projects` returning `201 Created` and a `Location` header; `GET /api/v1/projects` lists projects; `GET /api/v1/projects/{id}` retrieves a project or returns `404 Not Found`.
+- Confirmed blank project names return `400 Bad Request`.
+- Added `ProjectControllerIntegrationTest`. The Maven test command completed successfully; the tests cover registration/persistence, invalid blank name, list, and missing ID.
+- Added `apps/api/foundry-api/requests/projects.http` for the IntelliJ HTTP Client with response assertions and a variable that carries the newly created project ID between requests.
+- Current local development uses H2; PostgreSQL is still a future step.
 
 ### New terminology
-- **DTO (Data Transfer Object):** an object whose purpose is to carry data between components, such as a client request and backend.
+- **DTO (Data Transfer Object):** an object designed to carry data between components, such as client requests and backend responses.
 - **Java record:** a concise Java type for data-carrying values; the compiler generates its constructor and accessors.
-- **Bean Validation:** declarative constraints such as `@NotBlank` and `@Size`; these constraints take effect when validation is invoked, not merely because they appear on a class.
+- **Bean Validation:** declarative constraints such as `@NotBlank` and `@Size`; constraints take effect when request validation is invoked.
 - **Entity:** a class mapped to persisted database data.
 - **Primary key:** a field identifying a database record.
 - **UUID:** a 128-bit identifier commonly represented as a string; used here instead of a sequential public ID.
@@ -101,12 +105,32 @@ gcloud run revisions list --service=foundry-web --region=us-central1
 - **Spring Data JPA:** a Spring abstraction that provides repository implementations for JPA entities.
 - **JPA:** the Java persistence specification used to map Java objects to relational database records.
 - **Service layer:** the component where application rules and coordination live between controllers and persistence.
+- **HTTP status 201 Created:** indicates that a resource was successfully created.
+- **Location header:** identifies the URL of a newly created resource.
+- **HTTP status 400 Bad Request:** indicates the request was rejected, here because its input failed validation.
+- **HTTP status 404 Not Found:** indicates the requested resource does not exist.
+- **Integration test:** checks that multiple components work together, such as controller, validation, service, repository, and database.
+- **MockMvc:** Spring's test client for exercising MVC request handling without making a real network connection.
+- **Regression test:** protects already-working behavior from breaking when code changes.
+- **IntelliJ HTTP Client:** runs saved HTTP requests from a `.http` file and can assert on response status/body.
+- **Test fixture / setup:** data preparation performed before a test, such as clearing the database.
 - **Git staging area:** the proposed set of changes to be included in the next commit.
-- **Untracked file:** a file Git knows about in the working directory but has not begun tracking.
+- **Untracked file:** a file Git sees in the working directory but has not begun tracking.
+
+### System-design lessons / interview connections
+- **Separate API contracts from persistence entities.** Request and response DTOs prevent database schema changes from accidentally becoming public API changes.
+- **Layer responsibilities.** The controller handles HTTP mapping, the service coordinates application rules, and the repository handles persistence. Keep them separate for testability and maintainability; avoid adding layers that have no current responsibility.
+- **Validate at the boundary.** Reject invalid input before saving records. Tests should verify the invalid request returns the expected status and has no side effect in the database.
+- **Resource lifecycle.** A project can be created, listed, retrieved, or not found. Foundry's deployments will need a richer explicit lifecycle.
+- **Use observable HTTP semantics.** `201 Created` plus a `Location` header tells clients that creation occurred and where to retrieve the resource.
+- **HTTP tests and automated tests solve different needs.** The IntelliJ `.http` file is convenient for exploration; JUnit integration tests provide repeatable regression checks in local builds and CI.
+- **Persistence assumptions matter.** H2 is convenient for local iteration, but in-memory development storage is not the same as durable production storage. PostgreSQL and migration strategy will be introduced when needed.
+- **Control plane vs. runtime.** Foundry's API manages metadata and coordinates work; a separate runtime executes applications. Don't conflate successful API requests with successful deployments.
+- **Trust boundary.** Arbitrary user code execution is unsafe to expose without authentication, resource limits, and real isolation. The initial runtime must be limited to trusted sample projects until those controls exist.
 
 ### Next milestone
-Implement project registration end to end: request validation, service logic, persistence through `ProjectRepository`, and a `POST /api/v1/projects` endpoint returning `201 Created`. Add tests for successful creation and invalid inputs. Then add a list/get endpoint. Only after this should we introduce deployment records and the deployment lifecycle.
+Design a deployment resource and its state machine before implementing it. Define states, allowed transitions, timestamps, failure information, and what "success" proves. Then add the entity, DTOs, service, controller, and tests as one logical slice. Don't build a real deployment worker yet.
 
 ## Micro-revision format
 
-When the developer has 5–10 spare minutes, use an interactive, practical revision: ask one short recall question at a time, let them answer, correct misconceptions, and occasionally ask them to explain a concept using Foundry's actual flow. Keep it active-recall and project-connected, not a long lecture. Track troublesome concepts here so future revision can revisit them. Don't launch a revision unless the developer asks for one.
+When the developer has 5–10 spare minutes, use an interactive, practical revision: ask one short recall question at a time, let them answer, correct misconceptions, and occasionally ask them to explain a concept using Foundry's actual flow. Track both terminology and system-design ideas, including interview connections and weak areas. Keep it active-recall and project-connected, not a long lecture. Don't launch a revision unless the developer asks for one.
