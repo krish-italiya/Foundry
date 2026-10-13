@@ -1,0 +1,13 @@
+package dev.foundry.api;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class FoundryApiApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(FoundryApiApplication.class, args);
+    }
+
+}
