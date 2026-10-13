@@ -1,6 +1,6 @@
 # Foundry — Initial Architecture
 
-Status: proposed; implementation has not started.
+Status: **partially implemented**. The system shape and first project-registration API exist; the deployment lifecycle and runtime integration are still planned.
 
 ## Product boundary
 
@@ -11,31 +11,46 @@ Foundry is the **control plane** that coordinates deployments. A **runtime** is 
 - **Runtime adapter:** gives Foundry a consistent interface for operations on a particular runtime.
 - **Application runtime:** runs the resulting application container.
 
-## First vertical slice
+## Implemented so far
 
-The first milestone is intentionally narrow:
+- Spring Boot 4.1.1 API using Oracle JDK 25.
+- System endpoint: `GET /api/v1/system`.
+- Project registration: `POST /api/v1/projects`, with request validation, generated UUID, creation timestamp, persistence, and a `201 Created` response with a `Location` header.
+- Project listing and retrieval: `GET /api/v1/projects` and `GET /api/v1/projects/{id}`.
+- Integration tests for successful registration/persistence, blank-name rejection, project listing, and missing IDs.
+- Runnable API requests and response assertions in `apps/api/foundry-api/requests/projects.http`.
+- H2 is the current local development database; PostgreSQL remains the planned durable database.
+
+## First end-to-end deployment slice (target)
+
+The next meaningful product slice is deployment metadata and lifecycle, before running deployment jobs:
 
 ```text
 Developer
    |
-   | register trusted sample app / request deploy
+   | register project / request deploy
    v
-React dashboard
+React dashboard (planned)
    |
    v
-Spring Boot API ------ PostgreSQL
+Spring Boot API
    |
-   | create deployment record
+   +------ H2 now / PostgreSQL later
+   |
+   | create deployment record (planned)
    v
-Deployment worker
+Deployment worker (planned)
    |
    | build image / run container
    v
-Docker runtime
+Runtime adapter (planned)
+   |
+   v
+Docker runtime (first target, planned)
    |
    | health check + logs
    v
-Deployment status shown in UI
+Deployment status shown in UI (planned)
 ```
 
 Initially, the worker may run in the same development environment as the API to keep the slice small. The code boundary should still be clear so we can move the worker to a separate process when asynchronous execution and recovery become necessary.
@@ -44,11 +59,21 @@ Initially, the worker may run in the same development environment as the API to 
 
 - **Project:** a registered application and its configuration.
 - **Deployment:** one attempt to build and run a project.
-- **Deployment status:** `QUEUED`, `BUILDING`, `STARTING`, `HEALTH_CHECK`, `SUCCEEDED`, or `FAILED`.
+- **Deployment status:** candidate states are `QUEUED`, `BUILDING`, `STARTING`, `HEALTH_CHECK`, `SUCCEEDED`, and `FAILED`. These are not implemented yet.
 - **Deployment log:** timestamped output associated with a deployment.
 - **Runtime target:** the place an application is deployed, initially a controlled Docker host.
 
 State transitions must be explicit. A deployment should not report success until its health check passes.
+
+## System-design principles to apply when needed
+
+- **Explicit state machine:** define allowed deployment states and transitions so impossible state changes are rejected.
+- **Persist before doing long work:** record a deployment request before processing so users can see its state and later recover from failures.
+- **Control plane vs. data plane/runtime:** management APIs coordinate work; the runtime executes the user's application.
+- **Idempotency and retries:** repeated requests or worker retries must not accidentally create duplicate deployments or containers. Add when asynchronous job processing is implemented.
+- **Observability:** preserve status, timestamps, logs, and health-check results so failures can be diagnosed.
+- **API contracts:** use request/response DTOs to avoid exposing persistence entities as the public API.
+- **Trust boundary:** executing user-supplied code is dangerous; a container alone is not a sufficient isolation boundary for a public multi-tenant platform.
 
 ## Runtime portability
 
@@ -57,8 +82,6 @@ Define a small runtime interface rather than spreading Docker-specific behavior 
 Portability is a design goal, not a promise that every runtime has identical behavior. Each adapter will need to document capability differences.
 
 ## Safety boundaries
-
-Executing user-supplied containers is potentially dangerous: containers are not, by themselves, a sufficient security boundary for a public multi-tenant platform.
 
 For the first slice:
 - deploy only trusted sample repositories;
