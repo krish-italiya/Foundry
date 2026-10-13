@@ -72,7 +72,7 @@ gcloud run revisions list --service=foundry-web --region=us-central1
 - Added `SystemController` with `GET /api/v1/system`.
 - Verified the local endpoint returned HTTP 200 and JSON containing `name: Foundry`, `status: UP`, and `version: 0.1.0`.
 
-### New concepts
+### Concepts
 - **Control plane:** the part of a platform that accepts management requests and tracks system state.
 - **API endpoint:** a specific operation exposed at a URL and HTTP method.
 - **REST controller:** a Spring component that maps HTTP requests to Java methods and serializes returned data.
@@ -81,5 +81,32 @@ gcloud run revisions list --service=foundry-web --region=us-central1
 - **Health endpoint:** an endpoint used to report application health/readiness.
 - **Git commit / push:** a commit records a change locally; push sends commits to the remote repository.
 
+## Entry: Project-registration data model (in progress)
+
+### Implemented and verified
+- Added `ProjectEntity` with a generated UUID, name, repository URL, and creation timestamp.
+- Added `ProjectRepository` extending `JpaRepository<ProjectEntity, UUID>`; Spring Data JPA supplies common persistence operations.
+- Added `ProjectCreateRequest` as a Java `record` with `@NotBlank` and `@Size` constraints.
+- The Maven Wrapper tests passed after adding these classes.
+- The registration API is not implemented yet: there is no service/controller flow saving projects from an HTTP request.
+
+### New terminology
+- **DTO (Data Transfer Object):** an object whose purpose is to carry data between components, such as a client request and backend.
+- **Java record:** a concise Java type for data-carrying values; the compiler generates its constructor and accessors.
+- **Bean Validation:** declarative constraints such as `@NotBlank` and `@Size`; these constraints take effect when validation is invoked, not merely because they appear on a class.
+- **Entity:** a class mapped to persisted database data.
+- **Primary key:** a field identifying a database record.
+- **UUID:** a 128-bit identifier commonly represented as a string; used here instead of a sequential public ID.
+- **Repository:** a persistence abstraction used to save and retrieve entities.
+- **Spring Data JPA:** a Spring abstraction that provides repository implementations for JPA entities.
+- **JPA:** the Java persistence specification used to map Java objects to relational database records.
+- **Service layer:** the component where application rules and coordination live between controllers and persistence.
+- **Git staging area:** the proposed set of changes to be included in the next commit.
+- **Untracked file:** a file Git knows about in the working directory but has not begun tracking.
+
 ### Next milestone
-Add a project-registration API backed by the development database. Validate input, persist the project record, return its identifier, and add tests. Only after that should we model deployment records and the deployment lifecycle.
+Implement project registration end to end: request validation, service logic, persistence through `ProjectRepository`, and a `POST /api/v1/projects` endpoint returning `201 Created`. Add tests for successful creation and invalid inputs. Then add a list/get endpoint. Only after this should we introduce deployment records and the deployment lifecycle.
+
+## Micro-revision format
+
+When the developer has 5–10 spare minutes, use an interactive, practical revision: ask one short recall question at a time, let them answer, correct misconceptions, and occasionally ask them to explain a concept using Foundry's actual flow. Keep it active-recall and project-connected, not a long lecture. Track troublesome concepts here so future revision can revisit them. Don't launch a revision unless the developer asks for one.
