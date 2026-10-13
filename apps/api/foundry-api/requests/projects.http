@@ -1,0 +1,90 @@
+@baseUrl = http://localhost:8080
+
+### Health check
+GET {{baseUrl}}/actuator/health
+Accept: application/json
+
+> {%
+    client.test("Health endpoint returns UP", function () {
+        client.assert(response.status === 200, "Expected HTTP 200");
+        client.assert(response.body.status === "UP", "Expected status UP");
+    });
+%}
+
+### Foundry system information
+GET {{baseUrl}}/api/v1/system
+Accept: application/json
+
+> {%
+    client.test("System endpoint returns Foundry", function () {
+        client.assert(response.status === 200, "Expected HTTP 200");
+        client.assert(response.body.name === "Foundry", "Wrong application name");
+        client.assert(response.body.version === "0.1.0", "Wrong version");
+    });
+%}
+
+### Register a project
+POST {{baseUrl}}/api/v1/projects
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "hello-world",
+  "repositoryUrl": "https://github.com/example/hello-world"
+}
+
+> {%
+    client.test("Project is created", function () {
+        client.assert(response.status === 201, "Expected HTTP 201 Created");
+        client.assert(!!response.body.id, "Expected generated project ID");
+        client.assert(response.body.name === "hello-world", "Wrong project name");
+
+        client.global.set("foundryProjectId", response.body.id);
+    });
+%}
+
+### List registered projects
+GET {{baseUrl}}/api/v1/projects
+Accept: application/json
+
+> {%
+    client.test("Project appears in list", function () {
+        client.assert(response.status === 200, "Expected HTTP 200");
+
+        const projectId = client.global.get("foundryProjectId");
+        client.assert(
+            response.body.some(project => project.id === projectId),
+            "Created project was not found"
+        );
+    });
+%}
+
+### Get the registered project
+GET {{baseUrl}}/api/v1/projects/{{foundryProjectId}}
+Accept: application/json
+
+> {%
+    client.test("Retrieve registered project", function () {
+        client.assert(response.status === 200, "Expected HTTP 200");
+        client.assert(
+            response.body.id === client.global.get("foundryProjectId"),
+            "Returned project ID doesn't match"
+        );
+    });
+%}
+
+### Reject a blank project name
+POST {{baseUrl}}/api/v1/projects
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "   ",
+  "repositoryUrl": "https://github.com/example/hello-world"
+}
+
+> {%
+    client.test("Blank name is rejected", function () {
+        client.assert(response.status === 400, "Expected HTTP 400 Bad Request");
+    });
+%}
