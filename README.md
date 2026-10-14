@@ -55,10 +55,16 @@ This is the target architecture, not a claim that these components are already i
 - `GET /api/v1/projects` lists registered projects.
 - `GET /api/v1/projects/{id}` retrieves a project or returns `404 Not Found`.
 - Blank project names are rejected with `400 Bad Request`.
-- Maven tests pass, including integration tests for persistence, validation, listing, and not-found behavior.
+- Maven test suite passes locally: **19 tests, 0 failures, 0 errors**.
 - `requests/projects.http` provides runnable IntelliJ HTTP Client requests and response assertions.
+- Deployment record/lifecycle model and API implemented in the local working tree:
+  - `POST /api/v1/projects/{projectId}/deployments` creates a `QUEUED` deployment record.
+  - `GET /api/v1/projects/{projectId}/deployments` lists deployment history.
+  - `GET /api/v1/deployments/{deploymentId}` retrieves a deployment.
+- `requests/deployments.http` exercises create, list, retrieve, and invalid-source-ref requests. The user verified the live requests against the locally running API; the retrieval response showed the expected persisted `QUEUED` record.
+- **Repository sync caveat:** the deployment source changes have not yet been confirmed pushed to GitHub `main`; the deployment implementation status above describes the local working tree.
 
-**Not implemented yet:** deployment records, the deployment worker, runtime adapters, the React dashboard, CI workflows, and application log streaming.
+**Not implemented yet:** deployment-log persistence/API, a deployment worker, runtime adapters, the React dashboard, CI workflows, and application log streaming.
 
 ## Build principles
 
@@ -72,7 +78,7 @@ This is the target architecture, not a claim that these components are already i
 
 ## Next milestone
 
-Model a deployment as a persisted resource with an explicit lifecycle. Define valid states and transitions before implementing the entity, API, and tests. Do not start a deployment worker until the deployment lifecycle is clear.
+Add append-only deployment-log entries and read APIs (with an `afterSequence` cursor) before implementing a worker. Keep the worker and actual application execution out of scope until state and log persistence are tested.
 
 Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
 
