@@ -134,3 +134,44 @@ Design a deployment resource and its state machine before implementing it. Defin
 ## Micro-revision format
 
 When the developer has 5–10 spare minutes, use an interactive, practical revision: ask one short recall question at a time, let them answer, correct misconceptions, and occasionally ask them to explain a concept using Foundry's actual flow. Track both terminology and system-design ideas, including interview connections and weak areas. Keep it active-recall and project-connected, not a long lecture. Don't launch a revision unless the developer asks for one.
+
+
+## Entry: Deployment lifecycle and logging design (design phase; implementation not started)
+
+### Key design decisions
+- A Deployment represents one attempt for a project and a captured source configuration/revision.
+- Candidate lifecycle: `QUEUED → BUILDING → STARTING → HEALTH_CHECK → SUCCEEDED`; any nonterminal state can transition to `FAILED`.
+- `SUCCEEDED` and `FAILED` are terminal for a deployment record. A new attempt should normally create a new deployment record so history remains auditable.
+- A deployment counts as successful only after the configured health check passes; building an image or starting a process alone is insufficient.
+- Store lifecycle timestamps and a sanitized failure summary.
+- Build/deployment logs and application runtime logs are separate streams with different start times and retention needs.
+- Do not put an unlimited combined log blob in the Deployment row. Keep mutable deployment metadata separate from append-only log entries.
+- For a local prototype, log entries may be persisted in H2 with a deployment ID, monotonically increasing sequence number, timestamp, stage, stream/severity, and message.
+- The first UI can poll for entries after a known sequence cursor. Server-Sent Events (SSE) can be considered when live streaming becomes necessary; WebSockets are not justified unless bidirectional communication is needed.
+- Bound entry size, plan retention/cleanup, enforce access control, and redact secrets. Never intentionally log credentials, access tokens, secret environment values, or private keys.
+- At higher log volume, move to a dedicated log sink/backend rather than treating a relational metadata database as an unlimited log warehouse.
+
+### New concepts and interview connections
+- **State machine:** a defined set of states plus the transitions permitted between them.
+- **Terminal state:** a state from which that record cannot transition further, such as `SUCCEEDED` or `FAILED`.
+- **Invariant:** a condition that must remain true; Foundry's invariant is that success requires a passing health check.
+- **Asynchronous processing:** accept and persist a request promptly, then let a worker perform long-running work independently of the HTTP request.
+- **Snapshotting configuration:** preserve the source URL/ref and resolved revision used for one deployment so later project changes do not rewrite its history.
+- **Append-only log:** new log entries are added rather than repeatedly replacing a whole log document.
+- **Cursor / sequence number:** a position a client can use to ask only for new log entries, rather than downloading the entire log every time.
+- **Polling:** clients periodically request updates. It is easy to implement and recover after disconnects but creates repeated requests and may add latency.
+- **Server-Sent Events (SSE):** a server-to-client streaming mechanism suited to pushing live log updates; it is one-way and simpler than WebSockets for this use case.
+- **Log retention:** a policy defining how long log data remains available before cleanup.
+- **Redaction:** removing secrets or sensitive values from log content before storing or displaying it.
+- **Observability:** using state, timestamps, logs, and health-check results to infer what the system is doing and diagnose failures.
+- **Metadata versus telemetry separation:** deployment status records are structured control-plane data; logs may be much higher volume and need separate paging, retention, access, and storage rules.
+- **HTTP 202 Accepted:** appropriate for an accepted asynchronous operation that has not completed yet; it must not be interpreted as success of the deployment itself.
+
+### Design trade-offs
+- H2 log storage keeps the first prototype simple and testable, but is not the intended solution for high-volume production logs.
+- Polling is the simplest first log UI; SSE can be introduced when near-real-time updates are worth the additional lifecycle/reconnection considerations.
+- Persisting a deployment record before work begins makes it visible and recoverable, but actual reliable job execution will later require queue/worker recovery and idempotency.
+- A failure summary belongs on the Deployment record; the detailed diagnostic trail belongs in log entries.
+
+### Next milestone
+Implement the Deployment entity, status enum, and transition rules first, along with tests proving legal and illegal transitions and the health-check success invariant. Then implement the create/read deployment API and persisted log entries/API. Only after the data lifecycle is tested should we add a worker that actually builds and launches containers.
