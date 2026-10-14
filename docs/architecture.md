@@ -1,6 +1,6 @@
 # Foundry — Initial Architecture
 
-Status: **partially implemented**. The system shape and first project-registration API exist; the deployment lifecycle and runtime integration are still planned.
+Status: **partially implemented**. Project registration and a deployment-record API have been implemented and verified locally. The deployment source changes are not yet confirmed pushed to GitHub `main`; log persistence and runtime execution remain planned.
 
 ## Product boundary
 
@@ -18,10 +18,14 @@ Foundry is the **control plane** that coordinates deployments. A **runtime** is 
 - Project registration: `POST /api/v1/projects`, with request validation, generated UUID, creation timestamp, persistence, and a `201 Created` response with a `Location` header.
 - Project listing and retrieval: `GET /api/v1/projects` and `GET /api/v1/projects/{id}`.
 - Integration tests for successful registration/persistence, blank-name rejection, project listing, and missing IDs.
-- Runnable API requests and response assertions in `apps/api/foundry-api/requests/projects.http`.
+- Deployment records: `POST /api/v1/projects/{projectId}/deployments`, `GET /api/v1/projects/{projectId}/deployments`, and `GET /api/v1/deployments/{deploymentId}`.
+- The deployment request records the source repository URL and requested source ref, starts at `QUEUED`, and captures lifecycle timestamps/failure details as the state machine progresses.
+- Deployment state-machine and controller integration tests; local Maven run reports 19 tests, 0 failures, and 0 errors.
+- Runnable IntelliJ HTTP Client requests in `apps/api/foundry-api/requests/projects.http` and `apps/api/foundry-api/requests/deployments.http`. The user confirmed the deployment request flow against the live local API.
 - H2 is the current local development database; PostgreSQL remains the planned durable database.
+- **Sync note:** deployment source changes have not yet been confirmed pushed to GitHub `main`.
 
-## First end-to-end deployment slice (target)
+## First end-to-end deployment slice (current boundary)
 
 ```text
 Developer
@@ -35,7 +39,7 @@ Spring Boot API
    |
    +------ H2 now / PostgreSQL later
    |
-   | persist QUEUED deployment record (planned)
+   | persist QUEUED deployment record (implemented locally)
    v
 Deployment worker (planned)
    |    |  ---- build/deployment log events (planned)
@@ -53,7 +57,7 @@ Deployment state + log view in UI (planned)
 
 Initially, the worker may run in the same development environment as the API to keep the slice small. The code boundary should still be clear so we can move the worker to a separate process when asynchronous execution and recovery become necessary.
 
-## Deployment resource and lifecycle (proposed)
+## Deployment resource and lifecycle (state model implemented locally)
 
 A **Deployment** represents one attempt to deploy a particular project from a particular source revision/configuration.
 
@@ -66,10 +70,11 @@ Candidate fields:
 - `created_at`, `started_at`, `completed_at`: lifecycle timestamps
 - `failure_reason`: concise, sanitized failure summary
 
-Candidate states:
+Implemented state transitions:
 - `QUEUED` → `BUILDING` → `STARTING` → `HEALTH_CHECK` → `SUCCEEDED`
-- Any nonterminal state may transition to `FAILED`
-- `SUCCEEDED` and `FAILED` are terminal for that deployment record. A new deployment request creates a new record.
+- Any nonterminal state may transition to `FAILED` using a failure reason.
+- `SUCCEEDED` and `FAILED` are terminal. A new deployment request creates a new record.
+- The API currently creates records only in `QUEUED`; no worker advances them yet.
 
 A deployment is **not** successful merely because the build passed or the container process started. It counts as successful only after the configured health check passes.
 
