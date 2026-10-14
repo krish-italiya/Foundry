@@ -174,4 +174,31 @@ When the developer has 5–10 spare minutes, use an interactive, practical revis
 - A failure summary belongs on the Deployment record; the detailed diagnostic trail belongs in log entries.
 
 ### Next milestone
-Implement the Deployment entity, status enum, and transition rules first, along with tests proving legal and illegal transitions and the health-check success invariant. Then implement the create/read deployment API and persisted log entries/API. Only after the data lifecycle is tested should we add a worker that actually builds and launches containers.
+Add persisted append-only deployment log entries and a read endpoint supporting an `afterSequence` cursor. Test log ownership, ordering, and empty results. Only after the log data model and API work should we introduce a worker that actually builds and launches containers.
+
+
+## Entry: Deployment record API and live HTTP verification
+
+### Implemented and verified locally
+- Added a deployment state enum and entity with a guarded lifecycle: `QUEUED → BUILDING → STARTING → HEALTH_CHECK → SUCCEEDED`, with a failure path from any nonterminal state.
+- A deployment can become `SUCCEEDED` only after the health-check state is reached. Terminal deployments cannot be advanced again; failures require a nonblank reason.
+- Added request/response DTOs, repository, service, and controller for creating a deployment under a project, listing that project's history, and retrieving a deployment by ID.
+- Creating a deployment captures the project's repository URL and the requested source ref (branch or tag) so later project edits do not rewrite the deployment's source snapshot.
+- Integration tests cover creation, validation, missing projects/deployments, listing, and retrieval. The local Maven run completed with **19 tests, 0 failures, 0 errors, 0 skipped**.
+- The IntelliJ HTTP Client collection `requests/deployments.http` was run against the live local API. The user confirmed the endpoint responses matched expectations; the retrieved record contained its IDs, captured repository URL, `sourceRef: main`, `status: QUEUED`, a creation timestamp, and null start/completion/failure fields.
+- **Important boundary:** a `201 Created` deployment response means that the deployment record was accepted/persisted, not that an application was built or launched. There is no deployment worker yet.
+- The deployment implementation is verified in the local working tree, but its source changes still need to be checked for commit/push to GitHub `main`.
+
+### New concepts and interview connections
+- **Source ref:** a requested branch or tag. A future worker should also record the resolved Git commit SHA to make the actual source revision reproducible.
+- **Resource-oriented endpoint:** an API path models a resource, for example a deployment nested under its project for creation/history and addressed by ID for retrieval.
+- **Derived repository query:** Spring Data JPA can infer a query from method names such as `findAllByProject_IdOrderByCreatedAtDesc`.
+- **Historical source snapshot:** storing the repository URL and requested ref on each deployment protects the deployment record from later project-configuration changes.
+- **Live HTTP test vs. integration test:** JUnit/MockMvc proves components work together in the test environment; the IntelliJ HTTP Client verifies requests against the running local server and its actual configuration.
+- **Persistence vs. execution:** a deployment record in `QUEUED` proves the control-plane request was recorded; it does not prove a build or runtime exists.
+
+### System-design lessons
+- Return `201 Created` and a `Location` header when the deployment resource is created, while making the current state explicit in the response.
+- Keep the controller focused on HTTP semantics, the service on resource lookup/creation rules, and the repository on persistence.
+- Test both successful behavior and negative paths such as blank source refs and unknown project IDs.
+- Do not add a worker until deployment records and the next log-persistence slice have clear contracts.
