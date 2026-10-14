@@ -1,0 +1,84 @@
+@baseUrl = http://localhost:8080
+
+### Register a project for deployment tests
+POST {{baseUrl}}/api/v1/projects
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "deployment-test-project",
+  "repositoryUrl": "https://github.com/example/deployment-test-project"
+}
+
+> {%
+    client.test("Test project created", function () {
+        client.assert(response.status === 201, "Expected HTTP 201");
+        client.global.set("foundryDeploymentProjectId", response.body.id);
+    });
+%}
+
+### Create a deployment record
+POST {{baseUrl}}/api/v1/projects/{{foundryDeploymentProjectId}}/deployments
+Content-Type: application/json
+Accept: application/json
+
+{
+  "sourceRef": "main"
+}
+
+> {%
+    client.test("Deployment record created", function () {
+        client.assert(response.status === 201, "Expected HTTP 201");
+        client.assert(!!response.body.id, "Expected deployment ID");
+        client.assert(response.body.status === "QUEUED", "Expected QUEUED");
+        client.assert(response.body.sourceRef === "main", "Wrong source ref");
+
+        client.global.set("foundryDeploymentId", response.body.id);
+    });
+%}
+
+### List deployment history
+GET {{baseUrl}}/api/v1/projects/{{foundryDeploymentProjectId}}/deployments
+Accept: application/json
+
+> {%
+    client.test("Deployment appears in project history", function () {
+        client.assert(response.status === 200, "Expected HTTP 200");
+        client.assert(
+            response.body.some(
+                deployment =>
+                    deployment.id === client.global.get("foundryDeploymentId")
+            ),
+            "Created deployment was not found"
+        );
+    });
+%}
+
+### Retrieve a deployment
+GET {{baseUrl}}/api/v1/deployments/{{foundryDeploymentId}}
+Accept: application/json
+
+> {%
+    client.test("Deployment can be retrieved", function () {
+        client.assert(response.status === 200, "Expected HTTP 200");
+        client.assert(
+            response.body.id === client.global.get("foundryDeploymentId"),
+            "Wrong deployment returned"
+        );
+    });
+%}
+
+### Reject a blank source ref
+POST {{baseUrl}}/api/v1/projects/{{foundryDeploymentProjectId}}/deployments
+Content-Type: application/json
+Accept: application/json
+
+{
+  "sourceRef": "   "
+}
+
+> {%
+    client.test("Blank source ref is rejected", function () {
+        client.assert(response.status === 400, "Expected HTTP 400");
+    });
+%}
