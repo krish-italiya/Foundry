@@ -1,6 +1,6 @@
 # Foundry — Initial Architecture
 
-Status: **partially implemented**. Project registration and a deployment-record API have been implemented and verified locally. The deployment source files, integration tests, and HTTP request collection are confirmed present on GitHub `main`; log persistence and runtime execution remain planned.
+Status: **partially implemented**. Project/deployment APIs and deployment-log persistence/read APIs are on GitHub `main`. A controlled worker prototype has been exercised locally and emits failure logs when no runtime adapter is available; its source/tests are not yet confirmed pushed. Real application execution remains planned.
 
 ## Product boundary
 
@@ -23,7 +23,9 @@ Foundry is the **control plane** that coordinates deployments. A **runtime** is 
 - Deployment state-machine and controller integration tests; local Maven run reports 19 tests, 0 failures, and 0 errors.
 - Runnable IntelliJ HTTP Client requests in `apps/api/foundry-api/requests/projects.http` and `apps/api/foundry-api/requests/deployments.http`. The user confirmed the deployment request flow against the live local API.
 - H2 is the current local development database; PostgreSQL remains the planned durable database.
-- Deployment source files and tests have been confirmed present on GitHub `main`.
+- Deployment-log read API uses a per-deployment sequence cursor and bounded pages; its source is on GitHub `main`.
+- Local worker verification: 26 tests pass. An enabled worker records three ordered log entries and marks a deployment failed with an explicit runtime-unavailable reason. This proves the controlled failure path, not successful deployment execution.
+- Worker/poller source and worker integration tests still need to be pushed to GitHub `main`.
 
 ## First end-to-end deployment slice (current boundary)
 
@@ -41,7 +43,7 @@ Spring Boot API
    |
    | persist QUEUED deployment record (implemented)
    v
-Deployment worker (planned)
+Deployment worker (implemented locally; opt-in)
    |    |  ---- build/deployment log events (planned)
    v
 Runtime adapter (planned)
@@ -55,7 +57,7 @@ Docker runtime (first target, planned)
 Deployment state + log view in UI (planned)
 ```
 
-Initially, the worker may run in the same development environment as the API to keep the slice small. The code boundary should still be clear so we can move the worker to a separate process when asynchronous execution and recovery become necessary.
+The current opt-in worker runs in the API process and polls the database. It deliberately marks a deployment failed when no runtime adapter is configured. The next step is a constrained, real runtime adapter; asynchronous recovery, queue reliability, and multi-worker coordination remain future work.
 
 ## Deployment resource and lifecycle (state model implemented locally)
 
@@ -78,7 +80,7 @@ Implemented state transitions:
 
 A deployment is **not** successful merely because the build passed or the container process started. It counts as successful only after the configured health check passes.
 
-## Deployment log prototype (implemented locally; source sync pending)
+## Deployment log prototype (implemented; source present on GitHub `main`)
 
 Foundry needs two related but distinct log streams:
 
@@ -92,10 +94,10 @@ Local prototype implementation:
 - Unique constraint on `(deployment_id, sequence_number)` and a matching index support unique, ordered per-deployment retrieval.
 - The service appends entries by locking the deployment row, reading the latest sequence number, then inserting the next entry in a transaction.
 - The read API is `GET /api/v1/deployments/{deploymentId}/logs?afterSequence=0&limit=50`; page size is restricted to 1–100 and one extra row is fetched to determine `hasMore`.
-- Message size is bounded. There is no public append endpoint; the future worker will append through the service.
+- Message size is bounded. There is no public append endpoint; the trusted worker appends through the service.
 - The local Maven suite reports 23 tests passing with no failures/errors. Tests cover sequence order, multiple pages, empty results, missing deployments, and invalid cursor/page size.
-- The live HTTP Client request returned `200 OK` with an empty log page, cursor 0, and `hasMore: false`, as expected for a deployment that has not generated logs yet.
-- **Sync status:** log source files, tests, and the updated HTTP request have not yet been confirmed pushed to GitHub `main`.
+- The live HTTP Client request first returned `200 OK` with an empty log page, then returned three ordered entries (sequence numbers 1–3) after the worker was enabled.
+- Deployment-log source files, tests, and the HTTP request collection are present on GitHub `main`.
 
 Storing the first prototype in H2 keeps the learning slice simple, but this is not the final high-volume logging architecture. Later, a dedicated log sink/backend may be more appropriate.
 
