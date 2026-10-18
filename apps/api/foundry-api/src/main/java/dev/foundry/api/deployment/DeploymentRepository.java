@@ -26,4 +26,8 @@ public interface DeploymentRepository
     Optional<DeploymentEntity> findByIdForUpdate(
             @Param("deploymentId") UUID deploymentId
     );
+
+    Optional<DeploymentEntity> findFirstByStatusOrderByCreatedAtAsc(
+            DeploymentStatus status
+    );
 }

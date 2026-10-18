@@ -89,23 +89,35 @@ GET {{baseUrl}}/api/v1/deployments/{{foundryDeploymentId}}/logs?afterSequence=0&
 Accept: application/json
 
 > {%
-    client.test("Empty deployment logs are returned correctly", function () {
+    client.test("Deployment logs can be read", function () {
         client.assert(response.status === 200, "Expected HTTP 200");
         client.assert(
             Array.isArray(response.body.entries),
             "Expected an entries array"
         );
         client.assert(
-            response.body.entries.length === 0,
-            "Expected no logs before a worker generates them"
+            response.body.deploymentId ===
+            client.global.get("foundryDeploymentId"),
+            "Wrong deployment returned"
         );
         client.assert(
-            response.body.nextAfterSequence === 0,
-            "Expected cursor to remain at zero"
+            typeof response.body.hasMore === "boolean",
+            "Expected hasMore to be a boolean"
         );
-        client.assert(
-            response.body.hasMore === false,
-            "Expected no additional page"
-        );
+
+        const entries = response.body.entries;
+
+        if (entries.length === 0) {
+            client.assert(
+                response.body.nextAfterSequence === 0,
+                "Expected cursor to remain at zero for an empty page"
+            );
+        } else {
+            client.assert(
+                response.body.nextAfterSequence ===
+                entries[entries.length - 1].sequenceNumber,
+                "Cursor should match the last returned sequence"
+            );
+        }
     });
 %}
