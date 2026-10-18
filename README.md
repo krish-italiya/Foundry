@@ -57,12 +57,12 @@ This is the target architecture, not a claim that these components are already i
 - Blank project names are rejected with `400 Bad Request`.
 - Maven test suite passes locally: **19 tests, 0 failures, 0 errors**.
 - `requests/projects.http` provides runnable IntelliJ HTTP Client requests and response assertions.
-- Deployment record/lifecycle model and API implemented in the local working tree:
+- Deployment record/lifecycle model and API implemented and pushed to GitHub `main`:
   - `POST /api/v1/projects/{projectId}/deployments` creates a `QUEUED` deployment record.
   - `GET /api/v1/projects/{projectId}/deployments` lists deployment history.
   - `GET /api/v1/deployments/{deploymentId}` retrieves a deployment.
 - `requests/deployments.http` exercises create, list, retrieve, and invalid-source-ref requests. The user verified the live requests against the locally running API; the retrieval response showed the expected persisted `QUEUED` record.
-- **Repository sync caveat:** the deployment source changes have not yet been confirmed pushed to GitHub `main`; the deployment implementation status above describes the local working tree.
+- The deployment source files, integration tests, and HTTP request collection have been confirmed present on GitHub `main`.
 
 **Not implemented yet:** deployment-log persistence/API, a deployment worker, runtime adapters, the React dashboard, CI workflows, and application log streaming.
 
