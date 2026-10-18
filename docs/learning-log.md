@@ -187,7 +187,7 @@ Add persisted append-only deployment log entries and a read endpoint supporting 
 - Integration tests cover creation, validation, missing projects/deployments, listing, and retrieval. The local Maven run completed with **19 tests, 0 failures, 0 errors, 0 skipped**.
 - The IntelliJ HTTP Client collection `requests/deployments.http` was run against the live local API. The user confirmed the endpoint responses matched expectations; the retrieved record contained its IDs, captured repository URL, `sourceRef: main`, `status: QUEUED`, a creation timestamp, and null start/completion/failure fields.
 - **Important boundary:** a `201 Created` deployment response means that the deployment record was accepted/persisted, not that an application was built or launched. There is no deployment worker yet.
-- The deployment implementation is verified in the local working tree, but its source changes still need to be checked for commit/push to GitHub `main`.
+- The deployment implementation, integration tests, and HTTP request collection have been confirmed present on GitHub `main`.
 
 ### New concepts and interview connections
 - **Source ref:** a requested branch or tag. A future worker should also record the resolved Git commit SHA to make the actual source revision reproducible.
