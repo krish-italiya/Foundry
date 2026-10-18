@@ -213,7 +213,7 @@ Add persisted append-only deployment log entries and a read endpoint supporting 
 - Updated `DeploymentControllerIntegrationTest` with coverage for ordering and multiple pages, empty log results, unknown deployments, and invalid cursors/page sizes.
 - The local Maven suite completed with **23 tests, 0 failures, 0 errors, 0 skipped**.
 - Verified the endpoint against the live API with IntelliJ HTTP Client. The response was `200 OK` with `entries: []`, `nextAfterSequence: 0`, and `hasMore: false` for a deployment that had not generated logs.
-- **Sync status:** the log source files, test changes, and appended request in `requests/deployments.http` still need to be committed/pushed and confirmed on GitHub `main`.
+- The log source files, tests, and `requests/deployments.http` are confirmed present on GitHub `main`.
 
 ### New concepts and interview connections
 - **Append-only application contract:** the supported operation adds a new entry; existing entries are not edited through the application API.
@@ -232,3 +232,31 @@ Add persisted append-only deployment log entries and a read endpoint supporting 
 
 ### Next milestone
 Commit and push the local logging implementation, verify the files are present on GitHub `main`, and keep the repository clean. Once synchronized, design the first controlled deployment worker that advances the deployment state and appends logs without executing arbitrary untrusted code.
+
+## Entry: Controlled deployment worker and failure-path verification
+
+### Implemented and verified locally
+- Added `DeploymentWorker`, which locks and checks a deployment, processes it only if still `QUEUED`, advances it to `BUILDING`, writes diagnostic log entries, and records a terminal failure when no runtime adapter is configured.
+- Added an opt-in `DeploymentWorkerPoller` that polls the oldest queued deployment. `foundry.worker.enabled=false` is the default so normal development does not automatically fail new deployments.
+- Added a repository lookup for the oldest deployment in a given status and worker integration tests for safe failure/log creation, unknown deployment IDs, and terminal records not being processed again.
+- The local Maven suite completed with **26 tests, 0 failures, 0 errors, 0 skipped**.
+- Live IntelliJ HTTP Client verification retrieved three persisted entries for one deployment in sequence order: queue claim, runtime-unavailable warning, and worker error indicating the deployment was marked failed. The log endpoint returned HTTP 200 and `hasMore: false`.
+- This is a controlled failure-path prototype only. No repository is cloned, no image is built, and no application container is launched. A real runtime adapter and successful health check are required before Foundry may mark a deployment `SUCCEEDED`.
+- **Sync status:** worker/poller files, worker integration tests, repository update, scheduling setup, and worker configuration still need to be committed/pushed and confirmed on GitHub `main`. Logging implementation itself is already present there.
+
+### New concepts and interview connections
+- **Polling worker:** checks persisted work items periodically rather than receiving work from a broker. It is simple for a prototype but adds polling latency and coordination concerns.
+- **Claim/recheck under a database lock:** the worker rechecks deployment status after locking it so an already-terminal record is not processed again. This pattern is not yet a full distributed queue or recovery protocol.
+- **Fail closed:** when a required runtime capability is missing, the worker stops and records failure rather than pretending deployment succeeded.
+- **Transactional state/log updates:** the worker service method is transactional so deployment state changes and log writes can roll back together if persistence fails.
+- **Idempotent terminal handling:** unknown and non-queued deployments are not processed again by this worker method.
+- **Feature flag / opt-in configuration:** `foundry.worker.enabled` prevents background polling from changing new deployment records unless explicitly enabled.
+- **End-to-end observability:** a persisted status is the machine-readable outcome; ordered logs explain why that outcome occurred.
+
+### Trade-offs / unresolved issues
+- This poller is for a single-process learning prototype, not production multi-instance execution. A reliable queue/claim protocol, crash recovery, retry policy, and idempotency keys remain future work.
+- The failure message reflects missing runtime capability, not a real source checkout/build failure.
+- The runtime choice must fit local environment and resource constraints. Do not expose real execution publicly or accept untrusted repositories until isolation, access control, resource limits, and secret redaction are addressed.
+
+### Next milestone
+Push and verify the worker implementation. Then choose and implement a constrained runtime adapter for a trusted sample app, including startup, health-check verification, and cleanup. Never mark success based only on build/start.
