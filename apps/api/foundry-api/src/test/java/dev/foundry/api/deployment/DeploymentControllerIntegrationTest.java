@@ -1,5 +1,6 @@
 package dev.foundry.api.deployment;
 
+import dev.foundry.api.deployment.log.*;
 import dev.foundry.api.project.ProjectEntity;
 import dev.foundry.api.project.ProjectRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,8 +35,15 @@ class DeploymentControllerIntegrationTest {
     @Autowired
     private DeploymentRepository deploymentRepository;
 
+    @Autowired
+    private DeploymentLogRepository deploymentLogRepository;
+
+    @Autowired
+    private DeploymentLogService deploymentLogService;
+
     @BeforeEach
     void cleanDatabase() {
+        deploymentLogRepository.deleteAll();
         deploymentRepository.deleteAll();
         projectRepository.deleteAll();
     }
@@ -153,5 +161,111 @@ class DeploymentControllerIntegrationTest {
                         API_URL + "/deployments/{deploymentId}",
                         UUID.randomUUID()))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void logsShouldBeOrderedAndRetrievedAcrossPages() throws Exception {
+        ProjectEntity project = createProject();
+
+        DeploymentEntity deployment = deploymentRepository.save(
+                new DeploymentEntity(project, "main"));
+
+        deploymentLogService.append(
+                deployment.getId(),
+                DeploymentLogStage.SOURCE_CHECKOUT,
+                DeploymentLogStream.DEPLOYMENT,
+                DeploymentLogSeverity.INFO,
+                "Checking out source"
+        ).orElseThrow();
+
+        deploymentLogService.append(
+                deployment.getId(),
+                DeploymentLogStage.BUILD,
+                DeploymentLogStream.DEPLOYMENT,
+                DeploymentLogSeverity.INFO,
+                "Build started"
+        ).orElseThrow();
+
+        deploymentLogService.append(
+                deployment.getId(),
+                DeploymentLogStage.BUILD,
+                DeploymentLogStream.DEPLOYMENT,
+                DeploymentLogSeverity.INFO,
+                "Build finished"
+        ).orElseThrow();
+
+        mockMvc.perform(get(
+                        API_URL + "/deployments/{deploymentId}/logs",
+                        deployment.getId())
+                        .param("afterSequence", "0")
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deploymentId")
+                        .value(deployment.getId().toString()))
+                .andExpect(jsonPath("$.entries.length()").value(2))
+                .andExpect(jsonPath("$.entries[0].sequenceNumber").value(1))
+                .andExpect(jsonPath("$.entries[0].message")
+                        .value("Checking out source"))
+                .andExpect(jsonPath("$.entries[1].sequenceNumber").value(2))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextAfterSequence").value(2));
+
+        mockMvc.perform(get(
+                        API_URL + "/deployments/{deploymentId}/logs",
+                        deployment.getId())
+                        .param("afterSequence", "2")
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries.length()").value(1))
+                .andExpect(jsonPath("$.entries[0].sequenceNumber").value(3))
+                .andExpect(jsonPath("$.entries[0].message")
+                        .value("Build finished"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextAfterSequence").value(3));
+    }
+
+    @Test
+    void deploymentWithoutLogsShouldReturnEmptyPage() throws Exception {
+        ProjectEntity project = createProject();
+
+        DeploymentEntity deployment = deploymentRepository.save(
+                new DeploymentEntity(project, "main"));
+
+        mockMvc.perform(get(
+                        API_URL + "/deployments/{deploymentId}/logs",
+                        deployment.getId())
+                        .param("afterSequence", "42"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries.length()").value(0))
+                .andExpect(jsonPath("$.nextAfterSequence").value(42))
+                .andExpect(jsonPath("$.hasMore").value(false));
+    }
+
+    @Test
+    void logsForUnknownDeploymentShouldReturnNotFound() throws Exception {
+        mockMvc.perform(get(
+                        API_URL + "/deployments/{deploymentId}/logs",
+                        UUID.randomUUID()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void invalidLogCursorOrPageSizeShouldBeRejected() throws Exception {
+        ProjectEntity project = createProject();
+
+        DeploymentEntity deployment = deploymentRepository.save(
+                new DeploymentEntity(project, "main"));
+
+        mockMvc.perform(get(
+                        API_URL + "/deployments/{deploymentId}/logs",
+                        deployment.getId())
+                        .param("afterSequence", "-1"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get(
+                        API_URL + "/deployments/{deploymentId}/logs",
+                        deployment.getId())
+                        .param("limit", "101"))
+                .andExpect(status().isBadRequest());
     }
 }

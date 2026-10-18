@@ -82,3 +82,30 @@ Accept: application/json
         client.assert(response.status === 400, "Expected HTTP 400");
     });
 %}
+
+
+### Read deployment logs (empty until a worker generates entries)
+GET {{baseUrl}}/api/v1/deployments/{{foundryDeploymentId}}/logs?afterSequence=0&limit=50
+Accept: application/json
+
+> {%
+    client.test("Empty deployment logs are returned correctly", function () {
+        client.assert(response.status === 200, "Expected HTTP 200");
+        client.assert(
+            Array.isArray(response.body.entries),
+            "Expected an entries array"
+        );
+        client.assert(
+            response.body.entries.length === 0,
+            "Expected no logs before a worker generates them"
+        );
+        client.assert(
+            response.body.nextAfterSequence === 0,
+            "Expected cursor to remain at zero"
+        );
+        client.assert(
+            response.body.hasMore === false,
+            "Expected no additional page"
+        );
+    });
+%}
