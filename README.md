@@ -61,10 +61,13 @@ This is the target architecture, not a claim that these components are already i
   - `POST /api/v1/projects/{projectId}/deployments` creates a `QUEUED` deployment record.
   - `GET /api/v1/projects/{projectId}/deployments` lists deployment history.
   - `GET /api/v1/deployments/{deploymentId}` retrieves a deployment.
-- `requests/deployments.http` exercises create, list, retrieve, and invalid-source-ref requests. The user verified the live requests against the locally running API; the retrieval response showed the expected persisted `QUEUED` record.
+- `requests/deployments.http` exercises project/deployment create, list, retrieve, invalid-source-ref, and log-read requests.
+- Locally implemented deployment-log model/service/read API with per-deployment sequence numbers, bounded cursor pages, and a page-size limit of 100. The Maven suite reports **23 tests, 0 failures, 0 errors, 0 skipped**.
+- The user verified the live deployment lookup and log-read endpoint; the log endpoint returned `200 OK` with an empty `entries` array, `nextAfterSequence: 0`, and `hasMore: false` for a deployment with no generated logs.
+- **Sync status:** deployment-log source/tests/HTTP-request changes have not yet been confirmed pushed to GitHub `main`; this logging status describes the local working tree.
 - The deployment source files, integration tests, and HTTP request collection have been confirmed present on GitHub `main`.
 
-**Not implemented yet:** deployment-log persistence/API, a deployment worker, runtime adapters, the React dashboard, CI workflows, and application log streaming.
+**Not implemented yet:** a deployment worker that generates real logs, runtime adapters, the React dashboard, CI workflows, and live application execution/log collection.
 
 ## Build principles
 
