@@ -202,3 +202,33 @@ Add persisted append-only deployment log entries and a read endpoint supporting 
 - Keep the controller focused on HTTP semantics, the service on resource lookup/creation rules, and the repository on persistence.
 - Test both successful behavior and negative paths such as blank source refs and unknown project IDs.
 - Do not add a worker until deployment records and the next log-persistence slice have clear contracts.
+
+## Entry: Deployment log persistence and cursor-based reads
+
+### Implemented and verified locally
+- Added log stage, stream, and severity enums plus a JPA `DeploymentLogEntry` entity linked to `DeploymentEntity`.
+- Each entry records a positive per-deployment sequence number, timestamp, stage, stream, severity, and bounded message. A unique constraint and index cover deployment ID + sequence number.
+- Added `DeploymentLogRepository`, `DeploymentLogService`, and `DeploymentLogController`. The service appends entries in a transaction while locking the deployment row, then allocates the next sequence number. Only the read API is exposed over HTTP; the future trusted worker will append through the service.
+- Implemented `GET /api/v1/deployments/{deploymentId}/logs?afterSequence=0&limit=50` with cursor retrieval and a maximum page size of 100. The service fetches one extra row to determine whether another page exists.
+- Updated `DeploymentControllerIntegrationTest` with coverage for ordering and multiple pages, empty log results, unknown deployments, and invalid cursors/page sizes.
+- The local Maven suite completed with **23 tests, 0 failures, 0 errors, 0 skipped**.
+- Verified the endpoint against the live API with IntelliJ HTTP Client. The response was `200 OK` with `entries: []`, `nextAfterSequence: 0`, and `hasMore: false` for a deployment that had not generated logs.
+- **Sync status:** the log source files, test changes, and appended request in `requests/deployments.http` still need to be committed/pushed and confirmed on GitHub `main`.
+
+### New concepts and interview connections
+- **Append-only application contract:** the supported operation adds a new entry; existing entries are not edited through the application API.
+- **Composite unique constraint:** the pair `(deployment_id, sequence_number)` is unique, while different deployments may each begin at sequence 1.
+- **Pessimistic write lock:** a database lock that makes concurrent appenders to the same deployment take turns while choosing the next sequence.
+- **Cursor pagination:** the client supplies its last-seen sequence and receives only entries with a larger sequence number.
+- **Lookahead pagination:** fetching `limit + 1` rows lets the API determine `hasMore` without a separate count query.
+- **Bounded page and message sizes:** limits prevent a single request or entry from consuming unbounded resources.
+- **Write-path trust boundary:** the service can append logs for internal workers, while a public HTTP client cannot arbitrarily inject log entries.
+- **Test distinction:** automated tests seed entries through the service to validate ordering and paging; the live HTTP request verified the currently-empty result from the running server. Real log generation awaits a worker.
+
+### Trade-offs / follow-up
+- Locking the deployment row is understandable and sufficient for the current relational prototype, but it may limit throughput if one deployment produces logs at a very high rate.
+- H2 is suitable for the prototype; retention, secret redaction, authorization, and a high-volume external log backend are not yet implemented.
+- The empty-page live response does not prove the full populated log flow on the running server; that behavior is currently covered by automated tests.
+
+### Next milestone
+Commit and push the local logging implementation, verify the files are present on GitHub `main`, and keep the repository clean. Once synchronized, design the first controlled deployment worker that advances the deployment state and appends logs without executing arbitrary untrusted code.
