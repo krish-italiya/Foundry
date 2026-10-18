@@ -78,7 +78,7 @@ Implemented state transitions:
 
 A deployment is **not** successful merely because the build passed or the container process started. It counts as successful only after the configured health check passes.
 
-## Logging design (proposed, not implemented)
+## Deployment log prototype (implemented locally; source sync pending)
 
 Foundry needs two related but distinct log streams:
 
@@ -87,17 +87,19 @@ Foundry needs two related but distinct log streams:
 
 Do not store an unlimited combined log blob on the Deployment row. Keep deployment state/metadata separate from append-only log entries so logs can be fetched incrementally and retained independently.
 
-Initial learning/MVP model:
-- `DeploymentLogEntry` linked to `deployment_id`
-- monotonically increasing per-deployment `sequence_number` to fetch entries after a known cursor
-- timestamp, stage, stream/severity, and message
-- separate log entries for build/deployment output versus application runtime output
-- bound message size and define a retention/cleanup policy
-- redact credentials and secrets; never intentionally write tokens, secret environment values, or private keys to logs
+Local prototype implementation:
+- `DeploymentLogEntry` links each entry to a deployment and stores its sequence number, timestamp, stage, stream, severity, and message.
+- Unique constraint on `(deployment_id, sequence_number)` and a matching index support unique, ordered per-deployment retrieval.
+- The service appends entries by locking the deployment row, reading the latest sequence number, then inserting the next entry in a transaction.
+- The read API is `GET /api/v1/deployments/{deploymentId}/logs?afterSequence=0&limit=50`; page size is restricted to 1–100 and one extra row is fetched to determine `hasMore`.
+- Message size is bounded. There is no public append endpoint; the future worker will append through the service.
+- The local Maven suite reports 23 tests passing with no failures/errors. Tests cover sequence order, multiple pages, empty results, missing deployments, and invalid cursor/page size.
+- The live HTTP Client request returned `200 OK` with an empty log page, cursor 0, and `hasMore: false`, as expected for a deployment that has not generated logs yet.
+- **Sync status:** log source files, tests, and the updated HTTP request have not yet been confirmed pushed to GitHub `main`.
 
-For the first local prototype, storing log entries in H2 is acceptable. This is a learning implementation, not the final high-volume logging architecture. Later, a dedicated log sink such as a managed logging service or log backend can store/search high-volume runtime logs without pushing unbounded data into the relational metadata database.
+Storing the first prototype in H2 keeps the learning slice simple, but this is not the final high-volume logging architecture. Later, a dedicated log sink/backend may be more appropriate.
 
-For the first UI version, poll a logs endpoint using `afterSequence` to retrieve only new entries. This is straightforward to understand and reconnect. Consider Server-Sent Events (SSE) when live streaming is needed; do not add WebSockets unless we need bidirectional real-time communication.
+The first UI can poll this endpoint for entries after the last known sequence. Consider Server-Sent Events (SSE) if near-real-time streaming becomes necessary; WebSockets are not justified unless bidirectional communication is needed.
 
 Deployment status answers **what stage is the deployment in?** Logs answer **what happened inside that stage?** Keep both; neither replaces the other.
 
