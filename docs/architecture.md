@@ -1,6 +1,6 @@
 # Foundry — Initial Architecture
 
-Status: **partially implemented**. Project registration and a deployment-record API have been implemented and verified locally. The deployment source changes are not yet confirmed pushed to GitHub `main`; log persistence and runtime execution remain planned.
+Status: **partially implemented**. Project registration and a deployment-record API have been implemented and verified locally. The deployment source files, integration tests, and HTTP request collection are confirmed present on GitHub `main`; log persistence and runtime execution remain planned.
 
 ## Product boundary
 
@@ -23,7 +23,7 @@ Foundry is the **control plane** that coordinates deployments. A **runtime** is 
 - Deployment state-machine and controller integration tests; local Maven run reports 19 tests, 0 failures, and 0 errors.
 - Runnable IntelliJ HTTP Client requests in `apps/api/foundry-api/requests/projects.http` and `apps/api/foundry-api/requests/deployments.http`. The user confirmed the deployment request flow against the live local API.
 - H2 is the current local development database; PostgreSQL remains the planned durable database.
-- **Sync note:** deployment source changes have not yet been confirmed pushed to GitHub `main`.
+- Deployment source files and tests have been confirmed present on GitHub `main`.
 
 ## First end-to-end deployment slice (current boundary)
 
@@ -39,7 +39,7 @@ Spring Boot API
    |
    +------ H2 now / PostgreSQL later
    |
-   | persist QUEUED deployment record (implemented locally)
+   | persist QUEUED deployment record (implemented)
    v
 Deployment worker (planned)
    |    |  ---- build/deployment log events (planned)
