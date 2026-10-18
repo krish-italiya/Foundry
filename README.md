@@ -62,9 +62,11 @@ This is the target architecture, not a claim that these components are already i
   - `GET /api/v1/projects/{projectId}/deployments` lists deployment history.
   - `GET /api/v1/deployments/{deploymentId}` retrieves a deployment.
 - `requests/deployments.http` exercises project/deployment create, list, retrieve, invalid-source-ref, and log-read requests.
-- Locally implemented deployment-log model/service/read API with per-deployment sequence numbers, bounded cursor pages, and a page-size limit of 100. The Maven suite reports **23 tests, 0 failures, 0 errors, 0 skipped**.
-- The user verified the live deployment lookup and log-read endpoint; the log endpoint returned `200 OK` with an empty `entries` array, `nextAfterSequence: 0`, and `hasMore: false` for a deployment with no generated logs.
-- **Sync status:** deployment-log source/tests/HTTP-request changes have not yet been confirmed pushed to GitHub `main`; this logging status describes the local working tree.
+- Deployment-log persistence and cursor-based read API are present on GitHub `main`. Pages are bounded to 1–100 entries and ordered by per-deployment sequence number.
+- The live logs endpoint was verified first with an empty page and later with three persisted worker-generated entries (sequences 1–3).
+- The latest local Maven suite reports **26 tests, 0 failures, 0 errors, 0 skipped** after adding worker integration tests.
+- A controlled, opt-in worker prototype is implemented locally: it claims a queued deployment, records diagnostic logs, then marks it `FAILED` when no runtime adapter is configured. It does not execute application code.
+- **Sync status:** worker/poller source files, worker integration tests, and related application configuration still need to be pushed and confirmed on GitHub `main`.
 - The deployment source files, integration tests, and HTTP request collection have been confirmed present on GitHub `main`.
 
 **Not implemented yet:** a deployment worker that generates real logs, runtime adapters, the React dashboard, CI workflows, and live application execution/log collection.
@@ -81,7 +83,7 @@ This is the target architecture, not a claim that these components are already i
 
 ## Next milestone
 
-Add append-only deployment-log entries and read APIs (with an `afterSequence` cursor) before implementing a worker. Keep the worker and actual application execution out of scope until state and log persistence are tested.
+Push and verify the controlled worker prototype. Then design and implement a constrained runtime adapter for a trusted sample application; do not report success until a real health check passes.
 
 Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
 
