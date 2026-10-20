@@ -48,28 +48,25 @@ This is the target architecture, not a claim that these components are already i
 
 ## Current implementation
 
-**Working locally:**
-- Spring Boot 4.1.1 on Oracle JDK 25.
-- `GET /api/v1/system` returns the service name, status, and version.
-- `POST /api/v1/projects` validates a registration request, stores the project, and returns `201 Created` with a `Location` header.
-- `GET /api/v1/projects` lists registered projects.
-- `GET /api/v1/projects/{id}` retrieves a project or returns `404 Not Found`.
-- Blank project names are rejected with `400 Bad Request`.
-- Maven test suite passes locally: **19 tests, 0 failures, 0 errors**.
-- `requests/projects.http` provides runnable IntelliJ HTTP Client requests and response assertions.
-- Deployment record/lifecycle model and API implemented and pushed to GitHub `main`:
-  - `POST /api/v1/projects/{projectId}/deployments` creates a `QUEUED` deployment record.
-  - `GET /api/v1/projects/{projectId}/deployments` lists deployment history.
-  - `GET /api/v1/deployments/{deploymentId}` retrieves a deployment.
-- `requests/deployments.http` exercises project/deployment create, list, retrieve, invalid-source-ref, and log-read requests.
-- Deployment-log persistence and cursor-based read API are present on GitHub `main`. Pages are bounded to 1–100 entries and ordered by per-deployment sequence number.
-- The live logs endpoint was verified first with an empty page and later with three persisted worker-generated entries (sequences 1–3).
-- The latest local Maven suite reports **26 tests, 0 failures, 0 errors, 0 skipped** after adding worker integration tests.
-- A controlled, opt-in worker prototype is implemented locally: it claims a queued deployment, records diagnostic logs, then marks it `FAILED` when no runtime adapter is configured. It does not execute application code.
-- **Sync status:** worker/poller source files, worker integration tests, and related application configuration still need to be pushed and confirmed on GitHub `main`.
-- The deployment source files, integration tests, and HTTP request collection have been confirmed present on GitHub `main`.
+The code is on GitHub main. The latest verified vertical slice uses a **trusted, prebuilt JAR** to exercise the deployment workflow end to end.
 
-**Not implemented yet:** a deployment worker that generates real logs, runtime adapters, the React dashboard, CI workflows, and live application execution/log collection.
+**Implemented and verified:**
+- Spring Boot 4.1.1 API using Oracle JDK 25, with system and project registration/list/retrieval endpoints.
+- Deployment creation, project deployment history, and deployment retrieval through the project-scoped deployment API.
+- Deployment state machine: QUEUED → BUILDING → STARTING → HEALTH_CHECK → SUCCEEDED, with a failure path from nonterminal states.
+- Persisted deployment logs and cursor-based reads. Pages are bounded to 1–100 entries and entries have per-deployment sequence numbers.
+- An opt-in worker/poller that records progress and delegates execution through a RuntimeAdapter.
+- A local process runtime adapter that launches the prebuilt trusted sample JAR, binds its application to loopback, captures standard output/error, probes /health, and only reports success after an HTTP 200 response containing the status UP marker.
+- The deployment response persists the resulting applicationUrl; a live request returned status SUCCEEDED, a populated URL, and completion timestamps.
+- Sample application source and Maven build file at apps/samples/hello-service.
+- IntelliJ HTTP Client requests in apps/api/foundry-api/requests/deployments.http.
+- The full Maven clean test command completed successfully during this check-in session.
+
+**Safe local defaults:** foundry.worker.enabled=false and foundry.runtime.local.enabled=false. Enable them explicitly for the trusted local demonstration. The configured sample JAR path is repository-root-relative, so run the API with the repository root as its working directory or override the property for your launch configuration.
+
+**Not implemented yet:** arbitrary repository checkout/build, image creation, Docker execution, the React dashboard, authentication/authorization, multi-tenant isolation, robust crash recovery, retries, and production log retention/redaction.
+
+The current local process adapter proves lifecycle orchestration and health checking; it is **not a sandbox** and must not be exposed as a service that executes untrusted code. The intended Docker runtime remains a later, separately isolated implementation.
 
 ## Build principles
 
@@ -83,7 +80,8 @@ This is the target architecture, not a claim that these components are already i
 
 ## Next milestone
 
-Push and verify the controlled worker prototype. Then design and implement a constrained runtime adapter for a trusted sample application; do not report success until a real health check passes.
+Harden and test the trusted local-runtime lifecycle, including failure cleanup and process termination. Then evaluate the first isolated Docker runtime. Do not start arbitrary repositories or expose workloads publicly before isolation, access control, and resource limits are designed.
+
 
 Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
 
