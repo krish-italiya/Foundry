@@ -49,6 +49,10 @@ public class DeploymentEntity {
     @Column(name = "failure_reason", length = MAX_FAILURE_REASON_LENGTH)
     private String failureReason;
 
+
+    @Column(name = "application_url", length = 512)
+    private String applicationUrl;
+
     protected DeploymentEntity() {
         // Required by JPA.
     }
@@ -116,6 +120,16 @@ public class DeploymentEntity {
         completedAt = Instant.now();
     }
 
+    public void markHealthCheckPassed(String applicationUrl) {
+        if (applicationUrl == null || applicationUrl.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Application URL is required");
+        }
+
+        markHealthCheckPassed();
+        this.applicationUrl = applicationUrl.trim();
+    }
+
     public void fail(String reason) {
         if (status.isTerminal()) {
             throw new IllegalStateException(
@@ -178,4 +192,6 @@ public class DeploymentEntity {
     public String getFailureReason() {
         return failureReason;
     }
+
+    public String getApplicationUrl() { return applicationUrl; }
 }

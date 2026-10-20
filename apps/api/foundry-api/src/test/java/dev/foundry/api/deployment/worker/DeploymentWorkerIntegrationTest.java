@@ -17,7 +17,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(properties = "foundry.worker.enabled=false")
+@SpringBootTest(properties = {
+        "foundry.worker.enabled=false",
+        "foundry.runtime.local.enabled=false"
+})
 class DeploymentWorkerIntegrationTest {
 
     @Autowired

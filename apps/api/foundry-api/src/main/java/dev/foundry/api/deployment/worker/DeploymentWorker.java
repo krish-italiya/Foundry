@@ -1,53 +1,51 @@
 package dev.foundry.api.deployment.worker;
 
-import dev.foundry.api.deployment.DeploymentEntity;
-import dev.foundry.api.deployment.DeploymentRepository;
+import dev.foundry.api.deployment.DeploymentExecutionService;
 import dev.foundry.api.deployment.DeploymentStatus;
-import dev.foundry.api.deployment.dto.DeploymentLogsResponse;
 import dev.foundry.api.deployment.log.DeploymentLogService;
 import dev.foundry.api.deployment.log.DeploymentLogSeverity;
 import dev.foundry.api.deployment.log.DeploymentLogStage;
 import dev.foundry.api.deployment.log.DeploymentLogStream;
+import dev.foundry.api.runtime.RuntimeAdapter;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Optional;
+import java.net.URI;
+import java.time.Duration;
 import java.util.UUID;
 
 @Service
 public class DeploymentWorker {
 
+    private static final Duration HEALTH_TIMEOUT = Duration.ofSeconds(10);
+
     private static final String RUNTIME_UNAVAILABLE_REASON =
             "Deployment execution is disabled because no runtime adapter "
                     + "is configured.";
 
-    private final DeploymentRepository deploymentRepository;
+    private static final String HEALTH_FAILURE_REASON =
+            "The application health check did not pass before timeout.";
+
+    private static final String RUNTIME_FAILURE_REASON =
+            "The local runtime failed to start or pass its health check.";
+
+    private final DeploymentExecutionService executionService;
     private final DeploymentLogService deploymentLogService;
+    private final ObjectProvider<RuntimeAdapter> runtimeAdapters;
 
     public DeploymentWorker(
-            DeploymentRepository deploymentRepository,
-            DeploymentLogService deploymentLogService) {
-        this.deploymentRepository = deploymentRepository;
+            DeploymentExecutionService executionService,
+            DeploymentLogService deploymentLogService,
+            ObjectProvider<RuntimeAdapter> runtimeAdapters) {
+        this.executionService = executionService;
         this.deploymentLogService = deploymentLogService;
+        this.runtimeAdapters = runtimeAdapters;
     }
 
-    @Transactional
     public boolean processQueuedDeployment(UUID deploymentId) {
-        Optional<DeploymentEntity> result =
-                deploymentRepository.findByIdForUpdate(deploymentId);
-
-        if (result.isEmpty()) {
+        if (!executionService.claimQueued(deploymentId)) {
             return false;
         }
-
-        DeploymentEntity deployment = result.get();
-
-        // A queued job may already have been claimed by another worker.
-        if (deployment.getStatus() != DeploymentStatus.QUEUED) {
-            return false;
-        }
-
-        deployment.transitionTo(DeploymentStatus.BUILDING);
 
         appendLog(
                 deploymentId,
@@ -56,20 +54,143 @@ public class DeploymentWorker {
                 "Worker claimed the queued deployment."
         );
 
-        appendLog(
-                deploymentId,
-                DeploymentLogStage.BUILD,
-                DeploymentLogSeverity.WARN,
-                "Execution is disabled because no runtime adapter is configured."
-        );
+        RuntimeAdapter runtime = runtimeAdapters.getIfAvailable();
 
-        deployment.fail(RUNTIME_UNAVAILABLE_REASON);
+        if (runtime == null) {
+            appendLog(
+                    deploymentId,
+                    DeploymentLogStage.BUILD,
+                    DeploymentLogSeverity.WARN,
+                    "Execution is disabled because no runtime adapter "
+                            + "is configured."
+            );
+
+            executionService.markFailed(
+                    deploymentId,
+                    RUNTIME_UNAVAILABLE_REASON
+            );
+
+            appendLog(
+                    deploymentId,
+                    DeploymentLogStage.WORKER,
+                    DeploymentLogSeverity.ERROR,
+                    "Deployment marked FAILED: runtime adapter unavailable."
+            );
+
+            return true;
+        }
+
+        try {
+            appendLog(
+                    deploymentId,
+                    DeploymentLogStage.BUILD,
+                    DeploymentLogSeverity.INFO,
+                    "Using the prebuilt trusted sample application; "
+                            + "no repository checkout is performed."
+            );
+
+            executionService.advanceTo(
+                    deploymentId,
+                    DeploymentStatus.STARTING
+            );
+
+            URI applicationUrl = runtime.start(deploymentId);
+
+            appendLog(
+                    deploymentId,
+                    DeploymentLogStage.STARTUP,
+                    DeploymentLogSeverity.INFO,
+                    "Started the sample application at " + applicationUrl
+            );
+
+            executionService.advanceTo(
+                    deploymentId,
+                    DeploymentStatus.HEALTH_CHECK
+            );
+
+            appendLog(
+                    deploymentId,
+                    DeploymentLogStage.HEALTH_CHECK,
+                    DeploymentLogSeverity.INFO,
+                    "Checking the application's /health endpoint."
+            );
+
+            boolean healthy = runtime.awaitHealthy(
+                    deploymentId,
+                    HEALTH_TIMEOUT
+            );
+
+            if (!healthy) {
+                runtime.stop(deploymentId);
+
+                executionService.markFailed(
+                        deploymentId,
+                        HEALTH_FAILURE_REASON
+                );
+
+                appendLog(
+                        deploymentId,
+                        DeploymentLogStage.HEALTH_CHECK,
+                        DeploymentLogSeverity.ERROR,
+                        HEALTH_FAILURE_REASON
+                );
+
+                return true;
+            }
+
+            appendLog(
+                    deploymentId,
+                    DeploymentLogStage.HEALTH_CHECK,
+                    DeploymentLogSeverity.INFO,
+                    "Health check passed: HTTP 200 and status UP."
+            );
+
+            executionService.markSucceeded(
+                    deploymentId,
+                    applicationUrl.toString()
+            );
+
+            return true;
+
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+
+            return failRuntime(
+                    deploymentId,
+                    runtime,
+                    "Deployment processing was interrupted."
+            );
+
+        } catch (Exception failure) {
+            String detail = failure.getClass().getSimpleName();
+
+            if (failure.getMessage() != null
+                    && !failure.getMessage().isBlank()) {
+                detail += ": " + failure.getMessage();
+            }
+
+            return failRuntime(
+                    deploymentId,
+                    runtime,
+                    RUNTIME_FAILURE_REASON + " Cause: " + detail
+            );
+        }
+    }
+
+    private boolean failRuntime(
+            UUID deploymentId,
+            RuntimeAdapter runtime,
+            String failureReason) {
+
+        runtime.stop(deploymentId);
+
+        executionService.markFailed(deploymentId, failureReason);
 
         appendLog(
                 deploymentId,
                 DeploymentLogStage.WORKER,
                 DeploymentLogSeverity.ERROR,
-                "Deployment marked FAILED: runtime adapter unavailable."
+                "Deployment failed: " + failureReason
         );
 
         return true;

@@ -121,3 +121,12 @@ Accept: application/json
         }
     });
 %}
+
+### Check sample application health
+GET http://127.0.0.1:52366/health
+
+### Check sample application root
+GET http://127.0.0.1:52366/
+
+### Get deployment status
+GET http://localhost:8080/api/v1/deployments/528453e3-dd6a-4d0a-a83c-ea070215c9aa
