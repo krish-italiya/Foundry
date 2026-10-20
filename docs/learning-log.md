@@ -260,3 +260,32 @@ Commit and push the local logging implementation, verify the files are present o
 
 ### Next milestone
 Push and verify the worker implementation. Then choose and implement a constrained runtime adapter for a trusted sample app, including startup, health-check verification, and cleanup. Never mark success based only on build/start.
+
+## Entry: Trusted local runtime and end-to-end health verification (2026-10-20)
+
+### Implemented and verified
+- Added a `RuntimeAdapter` interface and `LocalProcessRuntimeAdapter` for a constrained trusted-sample workflow.
+- Built the sample application JAR from `apps/samples/hello-service` and launched it as a separate Java process on an available loopback port.
+- Captured the sample process's standard output and standard error and persisted them alongside deployment-stage log entries.
+- Probed the application's `/health` endpoint. The check passed only when the response was HTTP 200 and contained `"status":"UP"`.
+- The worker then persisted `status: SUCCEEDED`, `applicationUrl`, and lifecycle timestamps. A live `GET /api/v1/deployments/{deploymentId}` response confirmed the final state and URL.
+- A relative JAR path initially resolved against the wrong working directory. Updating the configuration to a repository-root-relative path fixed the lookup for the local launch setup.
+- The full Maven `clean test` command and `git diff --check` completed successfully during this check-in. The feature code was pushed to GitHub `main`.
+
+### Concepts and interview connections
+- **Child process:** a separate operating-system process started and managed by the Foundry API process.
+- **ProcessBuilder:** Java API used to construct a process command and working directory without relying on a shell command string.
+- **Loopback binding:** binding to `127.0.0.1` limits access to the local machine; it is not an externally reachable deployment URL.
+- **Ephemeral port:** an available port chosen for this process, avoiding a fixed-port conflict in this prototype.
+- **Standard output and standard error:** separate process streams captured so startup messages and errors can be diagnosed.
+- **Health/readiness check:** an application-level request that tests whether the service is ready, rather than inferring readiness from process creation alone.
+- **Runtime adapter:** an interface that keeps worker orchestration independent of the details used to start, check, and stop a specific runtime.
+- **Working directory:** the directory used to resolve relative paths. A path can fail when the IDE and terminal launch a program from different directories.
+- **Feature flag:** a setting that explicitly enables a worker or runtime capability; safe defaults avoid launching processes unexpectedly.
+
+### Design boundaries and follow-up
+- This is a **trusted prebuilt JAR** workflow. Foundry currently records the repository URL/ref but does not clone that repository, resolve a commit, or build it.
+- A local Java process is not a sandbox. Do not accept untrusted repositories or expose this launcher publicly; isolation, authorization, resource limits, and secret handling must come first.
+- The application URL is loopback-only and useful for local verification, not external users.
+- Test cleanup after unsuccessful health checks, worker exceptions, and API shutdown. Reliable crash recovery and cross-process workload tracking are not implemented yet.
+- Docker remains the intended first isolated runtime target; implement it as a separate adapter only after the current lifecycle is well understood.
