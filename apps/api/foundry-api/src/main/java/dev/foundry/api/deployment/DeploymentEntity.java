@@ -83,7 +83,7 @@ public class DeploymentEntity {
         this.sourceRepositoryUrl = project.getRepositoryUrl();
         this.sourceRef = sourceRef.trim();
         if (servicePath != null && !servicePath.isBlank()) {
-            String normalizedPath = servicePath.trim().replace('\\\\', '/');
+            String normalizedPath = servicePath.trim().replace('\\', '/');
             if (normalizedPath.length() > 512
                     || normalizedPath.startsWith("/")
                     || java.util.List.of(normalizedPath.split("/")).contains("..")) {
