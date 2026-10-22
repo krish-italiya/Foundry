@@ -46,6 +46,8 @@ type DeploymentLogs = {
   hasMore: boolean;
 };
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
@@ -53,7 +55,7 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(path, { ...init, headers });
+  const response = await fetch(API_BASE_URL + path, { ...init, headers });
   if (!response.ok) {
     let detail = response.statusText || "Request failed";
     try {
