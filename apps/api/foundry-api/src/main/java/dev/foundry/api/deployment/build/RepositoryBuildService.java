@@ -305,18 +305,18 @@ public class RepositoryBuildService {
         Path wrapperAtRoot = workspace.resolve(isWindows() ? "mvnw.cmd" : "mvnw");
         if (Files.isRegularFile(wrapperInService)) {
             commandDirectory = serviceDirectory;
-            command = List.of(wrapperInService.getFileName().toString(), "-B", "test", "package");
+            command = List.of(wrapperInService.getFileName().toString(), "-B", "verify");
         } else if (Files.isRegularFile(wrapperAtRoot)) {
             commandDirectory = workspace;
             command = List.of(wrapperAtRoot.getFileName().toString(),
-                    "-f", workspace.relativize(pom).toString(), "-B", "test", "package");
+                    "-f", workspace.relativize(pom).toString(), "-B", "verify");
         } else {
             commandDirectory = serviceDirectory;
-            command = List.of(isWindows() ? "mvn.cmd" : "mvn", "-B", "test", "package");
+            command = List.of(isWindows() ? "mvn.cmd" : "mvn", "-B", "verify");
         }
 
         append(deploymentId, DeploymentLogStream.DEPLOYMENT,
-                DeploymentLogSeverity.INFO, "Maven build started: tests and package lifecycle.");
+                DeploymentLogSeverity.INFO, "Maven build started: verify lifecycle (tests and package).");
         commandRunner.run(deploymentId, commandDirectory, command, commandTimeout, Map.of("CI", "true"));
 
         Path artifactPath;
