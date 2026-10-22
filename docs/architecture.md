@@ -101,7 +101,7 @@ The planned first container runtime remains Docker, with cloud runtimes consider
 
 ## Next engineering checkpoints
 
-1. Test runtime stop/cleanup on health failure, worker exceptions, and application shutdown.
+1. **In progress:** exercise the concrete local adapter's process termination on health-check failure, worker exceptions, graceful shutdown, and forced termination. A regression test now proves that a mocked cleanup exception does not prevent a deployment from being marked `FAILED` (29 tests pass).
 2. Document repeatable local setup and the trusted-sample-only constraint.
 3. Design the isolated Docker adapter before enabling arbitrary source builds.
 4. Add idempotency, reliable job recovery, authorization, resource limits, and log redaction before any public workload execution.
