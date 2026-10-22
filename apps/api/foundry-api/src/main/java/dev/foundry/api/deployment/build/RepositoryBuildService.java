@@ -1,7 +1,7 @@
 package dev.foundry.api.deployment.build;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import dev.foundry.api.deployment.log.DeploymentLogService;
 import dev.foundry.api.deployment.log.DeploymentLogSeverity;
 import dev.foundry.api.deployment.log.DeploymentLogStage;
@@ -42,7 +42,7 @@ public class RepositoryBuildService {
 
     private final BuildCommandRunner commandRunner;
     private final DeploymentLogService logService;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
     private final Path workspaceRoot;
     private final List<String> allowedRepositories;
     private final Duration commandTimeout;
@@ -50,7 +50,7 @@ public class RepositoryBuildService {
     public RepositoryBuildService(
             BuildCommandRunner commandRunner,
             DeploymentLogService logService,
-            ObjectMapper objectMapper,
+            JsonMapper objectMapper,
             @Value("${foundry.build.workspace-root:.foundry/workspaces}") String workspaceRoot,
             @Value("${foundry.build.allowed-repositories:}") String allowedRepositories,
             @Value("${foundry.build.command-timeout-seconds:600}") long commandTimeoutSeconds) {
