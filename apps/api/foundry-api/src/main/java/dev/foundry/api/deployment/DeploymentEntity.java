@@ -53,11 +53,18 @@ public class DeploymentEntity {
     @Column(name = "application_url", length = 512)
     private String applicationUrl;
 
+    @Column(name = "service_path", length = 512, updatable = false)
+    private String servicePath;
+
     protected DeploymentEntity() {
         // Required by JPA.
     }
 
     public DeploymentEntity(ProjectEntity project, String sourceRef) {
+        this(project, sourceRef, null);
+    }
+
+    public DeploymentEntity(ProjectEntity project, String sourceRef, String servicePath) {
         this.project = Objects.requireNonNull(project, "Project is required");
 
         if (project.getRepositoryUrl() == null
@@ -75,6 +82,15 @@ public class DeploymentEntity {
 
         this.sourceRepositoryUrl = project.getRepositoryUrl();
         this.sourceRef = sourceRef.trim();
+        if (servicePath != null && !servicePath.isBlank()) {
+            String normalizedPath = servicePath.trim().replace('\\\\', '/');
+            if (normalizedPath.length() > 512
+                    || normalizedPath.startsWith("/")
+                    || java.util.List.of(normalizedPath.split("/")).contains("..")) {
+                throw new IllegalArgumentException("Service path must be a repository-relative path.");
+            }
+            this.servicePath = normalizedPath.equals(".") ? null : normalizedPath;
+        }
         this.status = DeploymentStatus.QUEUED;
         this.createdAt = Instant.now();
     }
@@ -194,4 +210,6 @@ public class DeploymentEntity {
     }
 
     public String getApplicationUrl() { return applicationUrl; }
+
+    public String getServicePath() { return servicePath; }
 }
