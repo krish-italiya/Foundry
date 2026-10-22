@@ -584,7 +584,7 @@ function App() {
             {selectedDeployment?.status === "QUEUED" && (
               <div className="queue-note">
                 <span className="queue-note-icon">i</span>
-                <span><strong>Deployment is queued.</strong> The worker and local runtime are disabled by default. Enable them explicitly in the backend configuration to run the trusted sample JAR.</span>
+                <span><strong>Deployment is queued.</strong> Repository builds are disabled by default. Enable the trusted repository build pipeline and allowlist this GitHub repository before starting a build.</span>
               </div>
             )}
 
