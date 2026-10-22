@@ -12,6 +12,7 @@ public record BuiltArtifact(
 ) {
     public enum LaunchMode {
         SPRING_BOOT_JAR,
+        JAVA_JAR,
         VITE_PREVIEW,
         NODE_START
     }

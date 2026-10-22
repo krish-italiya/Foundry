@@ -28,6 +28,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.jar.Attributes;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import java.util.zip.ZipFile;
 
 @Service
@@ -323,23 +326,30 @@ public class RepositoryBuildService {
         try (var targets = Files.list(serviceDirectory.resolve("target"))) {
             artifactPath = targets
                     .filter(path -> path.getFileName().toString().endsWith(".jar"))
-                    .filter(RepositoryBuildService::isExecutableSpringBootJar)
-                    .max(Comparator.comparingLong(RepositoryBuildService::lastModified))
+                    .filter(RepositoryBuildService::isRunnableJar)
+                    // Prefer a repackaged Spring Boot JAR when a build emits multiple runnable JARs.
+                    .max(Comparator
+                            .comparingInt((Path path) -> isExecutableSpringBootJar(path) ? 1 : 0)
+                            .thenComparingLong(RepositoryBuildService::lastModified))
                     .orElseThrow(() -> new RepositoryBuildException(
-                            "Maven finished, but no executable Spring Boot JAR was found in target/. "
-                                    + "Library modules and non-executable JARs are not deployable yet."));
+                            "Maven finished, but no runnable JAR was found in target/. "
+                                    + "Expected a Spring Boot executable JAR or a JAR with a Main-Class manifest entry."));
         } catch (IOException missingTarget) {
             throw new RepositoryBuildException(
                     "Maven finished, but the service target/ directory could not be read.", missingTarget);
         }
 
+        boolean springBootArtifact = isExecutableSpringBootJar(artifactPath);
         String pomText = Files.readString(pom);
-        boolean hasActuator = pomText.contains("spring-boot-starter-actuator");
+        boolean hasActuator = springBootArtifact
+                && pomText.contains("spring-boot-starter-actuator");
         return new BuiltArtifact(
                 workspace,
                 serviceDirectory,
                 artifactPath,
-                BuiltArtifact.LaunchMode.SPRING_BOOT_JAR,
+                springBootArtifact
+                        ? BuiltArtifact.LaunchMode.SPRING_BOOT_JAR
+                        : BuiltArtifact.LaunchMode.JAVA_JAR,
                 hasActuator ? "/actuator/health" : "/",
                 hasActuator ? "\"status\":\"UP\"" : "");
     }
@@ -468,6 +478,22 @@ public class RepositoryBuildService {
     private static boolean usableScript(String script) {
         return script != null && !script.isBlank()
                 && !script.contains("Error: no test specified");
+    }
+
+    static boolean isRunnableJar(Path jar) {
+        if (isExecutableSpringBootJar(jar)) {
+            return true;
+        }
+        try (JarFile archive = new JarFile(jar.toFile())) {
+            Manifest manifest = archive.getManifest();
+            if (manifest == null) {
+                return false;
+            }
+            String mainClass = manifest.getMainAttributes().getValue(Attributes.Name.MAIN_CLASS);
+            return mainClass != null && !mainClass.isBlank();
+        } catch (IOException invalidJar) {
+            return false;
+        }
     }
 
     private static boolean isExecutableSpringBootJar(Path jar) {
