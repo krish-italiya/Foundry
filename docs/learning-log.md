@@ -289,3 +289,23 @@ Push and verify the worker implementation. Then choose and implement a constrain
 - The application URL is loopback-only and useful for local verification, not external users.
 - Test cleanup after unsuccessful health checks, worker exceptions, and API shutdown. Reliable crash recovery and cross-process workload tracking are not implemented yet.
 - Docker remains the intended first isolated runtime target; implement it as a separate adapter only after the current lifecycle is well understood.
+
+
+## Entry: Failure cleanup must not hide deployment failure (2026-10-22)
+
+### Implemented and verified
+- Refactored the worker's unhealthy-runtime path to use the same failure handler as other runtime errors.
+- Made runtime cleanup best-effort: when `runtime.stop()` throws a `RuntimeException`, the worker preserves the original failure reason, adds cleanup diagnostics, and still attempts to persist the deployment as `FAILED`.
+- Added `cleanupFailureDoesNotPreventDeploymentFromBeingMarkedFailed` to `DeploymentWorkerRuntimeIntegrationTest`. It simulates an unhealthy application and a cleanup exception, then asserts that the deployment is failed and the failure details contain both causes.
+- Ran the complete Maven suite: **29 tests, 0 failures, 0 errors, 0 skipped**.
+- Committed and pushed as [`0e25c1e`](https://github.com/krish-italiya/Foundry/commit/0e25c1e21d2d885fa3808a60597b2c1ddc5001dd).
+
+### Concepts and interview connections
+- **Best-effort cleanup:** resource cleanup should be attempted, but an error in cleanup should not erase the original operation outcome.
+- **Failure-path testing:** deliberately cause multiple failures in sequence to validate that the system reaches a predictable terminal state.
+- **Preserving primary and secondary errors:** the health-check failure remains the main deployment cause, while the cleanup exception is attached as diagnostic context.
+- **Terminal-state observability:** persist the final status and include enough sanitized diagnostic information to explain why the deployment failed.
+
+### Boundary and follow-up
+- This regression test uses a mocked runtime adapter to reproduce a cleanup exception deterministically. It does not by itself prove that every real OS-process cleanup or API-shutdown path is safe.
+- Next, test the concrete local adapter's process termination and shutdown behavior, including unsuccessful health checks and child processes that resist graceful termination. Then reassess the runtime lifecycle before starting the isolated Docker adapter.
