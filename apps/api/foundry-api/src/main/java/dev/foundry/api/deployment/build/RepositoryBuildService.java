@@ -183,11 +183,11 @@ public class RepositoryBuildService {
                         "Service path '" + requestedServicePath
                                 + "' must contain exactly one supported manifest (pom.xml or package.json).");
             }
-            return matches.getFirst();
+            return rejectAmbiguous(matches.getFirst());
         }
 
         if (discovered.size() == 1) {
-            return discovered.getFirst();
+            return rejectAmbiguous(discovered.getFirst());
         }
 
         String candidates = discovered.stream()
@@ -201,6 +201,16 @@ public class RepositoryBuildService {
         throw new RepositoryBuildException(
                 "Multiple buildable services were detected. Set the service path in the deployment form. "
                         + "Candidates: " + candidates);
+    }
+
+    private BuildServiceDescriptor rejectAmbiguous(BuildServiceDescriptor descriptor) {
+        if ("AMBIGUOUS".equals(descriptor.ecosystem())) {
+            throw new RepositoryBuildException(
+                    "Both pom.xml and package.json exist in service path '"
+                            + (descriptor.path().isBlank() ? "." : descriptor.path())
+                            + "'. Split them into separate service directories for this first pipeline.");
+        }
+        return descriptor;
     }
 
     private List<BuildServiceDescriptor> discoverServices(Path workspace) throws IOException {
