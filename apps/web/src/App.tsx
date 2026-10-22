@@ -20,6 +20,7 @@ type Deployment = {
   projectId: string;
   sourceRepositoryUrl: string;
   sourceRef: string;
+  servicePath: string | null;
   status: DeploymentStatus;
   createdAt: string;
   startedAt: string | null;
@@ -546,7 +547,7 @@ function App() {
                     <span className={"deployment-symbol deployment-symbol-" + deployment.status.toLowerCase().replace("_", "-")}>{deployment.status === "SUCCEEDED" ? "✓" : deployment.status === "FAILED" ? "!" : "↗"}</span>
                     <span className="deployment-main">
                       <span className="deployment-title">Release <b>#{shortId(deployment.id)}</b></span>
-                      <span className="deployment-meta"><span>{deployment.sourceRef}</span><i>·</i>{timeLabel(deployment.createdAt)}</span>
+                      <span className="deployment-meta"><span>{deployment.sourceRef}</span>{deployment.servicePath && <><i>·</i><span>{deployment.servicePath}</span></>}<i>·</i>{timeLabel(deployment.createdAt)}</span>
                     </span>
                     <StatusBadge status={deployment.status} />
                     <span className="row-chevron">›</span>
