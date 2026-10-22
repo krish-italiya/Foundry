@@ -133,4 +133,41 @@ class DeploymentWorkerRuntimeIntegrationTest {
 
         verify(runtimeAdapter).stop(deployment.getId());
     }
+
+    @Test
+    void cleanupFailureDoesNotPreventDeploymentFromBeingMarkedFailed()
+            throws Exception {
+
+        DeploymentEntity deployment = createQueuedDeployment();
+
+        when(runtimeAdapter.start(deployment.getId()))
+                .thenReturn(URI.create("http://127.0.0.1:43210"));
+
+        when(runtimeAdapter.awaitHealthy(
+                eq(deployment.getId()), any(Duration.class)))
+                .thenReturn(false);
+
+        doThrow(new IllegalStateException("simulated cleanup failure"))
+                .when(runtimeAdapter)
+                .stop(deployment.getId());
+
+        assertThat(deploymentWorker.processQueuedDeployment(
+                deployment.getId())).isTrue();
+
+        DeploymentEntity failed = deploymentRepository
+                .findById(deployment.getId())
+                .orElseThrow();
+
+        assertThat(failed.getStatus())
+                .isEqualTo(DeploymentStatus.FAILED);
+
+        assertThat(failed.getFailureReason())
+                .contains(
+                        "health check",
+                        "Runtime cleanup failed",
+                        "simulated cleanup failure"
+                );
+
+        verify(runtimeAdapter).stop(deployment.getId());
+    }
 }

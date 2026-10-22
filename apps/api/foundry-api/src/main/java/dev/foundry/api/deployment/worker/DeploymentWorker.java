@@ -121,21 +121,11 @@ public class DeploymentWorker {
             );
 
             if (!healthy) {
-                runtime.stop(deploymentId);
-
-                executionService.markFailed(
+                return failRuntime(
                         deploymentId,
+                        runtime,
                         HEALTH_FAILURE_REASON
                 );
-
-                appendLog(
-                        deploymentId,
-                        DeploymentLogStage.HEALTH_CHECK,
-                        DeploymentLogSeverity.ERROR,
-                        HEALTH_FAILURE_REASON
-                );
-
-                return true;
             }
 
             appendLog(
@@ -182,15 +172,31 @@ public class DeploymentWorker {
             RuntimeAdapter runtime,
             String failureReason) {
 
-        runtime.stop(deploymentId);
+        String finalFailureReason = failureReason;
 
-        executionService.markFailed(deploymentId, failureReason);
+        try {
+            runtime.stop(deploymentId);
+        } catch (RuntimeException cleanupFailure) {
+            finalFailureReason += " Runtime cleanup failed: "
+                    + cleanupFailure.getClass().getSimpleName();
+
+            if (cleanupFailure.getMessage() != null
+                    && !cleanupFailure.getMessage().isBlank()) {
+                finalFailureReason += ": "
+                        + cleanupFailure.getMessage();
+            }
+        }
+
+        executionService.markFailed(
+                deploymentId,
+                finalFailureReason
+        );
 
         appendLog(
                 deploymentId,
                 DeploymentLogStage.WORKER,
                 DeploymentLogSeverity.ERROR,
-                "Deployment failed: " + failureReason
+                "Deployment failed: " + finalFailureReason
         );
 
         return true;
