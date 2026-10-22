@@ -24,7 +24,8 @@ import static org.mockito.Mockito.*;
 
 @SpringBootTest(properties = {
         "foundry.worker.enabled=false",
-        "foundry.runtime.local.enabled=false"
+        "foundry.runtime.local.enabled=false",
+        "foundry.runtime.local.sample-mode-enabled=true"
 })
 class DeploymentWorkerRuntimeIntegrationTest {
 

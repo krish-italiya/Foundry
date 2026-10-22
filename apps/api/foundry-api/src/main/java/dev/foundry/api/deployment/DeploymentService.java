@@ -29,7 +29,7 @@ public class DeploymentService {
 
         return projectRepository.findById(projectId)
                 .map(project ->
-                        new DeploymentEntity(project, request.sourceRef()))
+                        new DeploymentEntity(project, request.sourceRef(), request.servicePath()))
                 .map(deploymentRepository::save)
                 .map(this::toResponse);
     }
@@ -66,7 +66,8 @@ public class DeploymentService {
                 deployment.getStartedAt(),
                 deployment.getCompletedAt(),
                 deployment.getFailureReason(),
-                deployment.getApplicationUrl()
+                deployment.getApplicationUrl(),
+                deployment.getServicePath()
         );
     }
 }

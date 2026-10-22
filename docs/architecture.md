@@ -1,107 +1,105 @@
-# Foundry — Initial Architecture
+# Foundry Architecture — Repository-to-Deployment Pipeline
 
-Status: **first local deployment vertical slice verified; production runtime and public platform are not implemented**. The source and tests are on GitHub main.
+Status: **local product prototype; repository build pipeline is implemented on `feat/repository-build-pipeline` and still needs local compile and end-to-end verification**.
 
-## Product boundary
-
-Foundry is a **control plane** that accepts deployment requests, records lifecycle state, and exposes status and logs. A **runtime** is where an application process executes. These responsibilities are separated behind a RuntimeAdapter interface.
-
-- **API/control plane:** validates requests and records project/deployment metadata.
-- **Deployment worker/poller:** claims queued deployment records and coordinates a deployment attempt. The current poller runs inside the API process and is disabled by default.
-- **Runtime adapter:** provides a stable interface for starting, checking, and stopping a workload.
-- **Application process:** the sample service launched by the current local adapter.
-
-## Current vertical slice
+## Current path
 
 ```text
-HTTP Client / API caller
-          |
-          v
-     Spring Boot API
-          |
-          +------ H2 persistence
-          |        projects, deployments, ordered log entries
-          |
-          v
-     Opt-in worker/poller
-          |
-          v
-       RuntimeAdapter
-          |
-          v
- LocalProcessRuntimeAdapter
-          |
-          | launches trusted, prebuilt JAR
-          v
-Sample Java process (127.0.0.1:ephemeral-port)
-          |
-          v
-       GET /health
-          |
-          | HTTP 200 + status UP
-          v
-Deployment marked SUCCEEDED
-applicationUrl and lifecycle timestamps persisted
+React + TypeScript dashboard
+            |
+            | create project / request deployment
+            v
+Spring Boot control-plane API
+            |
+            +---- H2 metadata: projects, deployments, ordered logs
+            |
+            v
+Opt-in deployment worker
+            |
+            v
+RepositoryBuildService (opt-in)
+            |
+            +---- exact GitHub repository allowlist
+            +---- git clone of requested ref into a disposable workspace
+            +---- find pom.xml / package.json, with service-path selection
+            +---- Maven tests + package OR npm ci + configured test/build scripts
+            +---- capture stdout/stderr and exit status into deployment logs
+            |
+            v
+BuiltArtifact
+            |
+            v
+LocalProcessRuntimeAdapter
+            |
+            +---- executable Spring Boot JAR OR npm preview/start
+            +---- loopback URL
+            +---- HTTP health check
+            |
+            v
+Persist SUCCEEDED only after health check passes
 ```
 
-This flow was verified locally and pushed to GitHub. The local adapter is a learning prototype, not a production runtime or security boundary.
+This pipeline must stay disabled by default. A trusted-repository allowlist limits which source can be checked out but does **not** sandbox build scripts. Do not expose it to the public or run untrusted repositories until execution is moved into an appropriately isolated worker/runtime with resource limits and credential boundaries.
 
-## Implemented API and lifecycle
+## Existing control-plane APIs
 
-- System endpoint: `GET /api/v1/system`.
-- Project registration/list/retrieval: `POST /api/v1/projects`, `GET /api/v1/projects`, and `GET /api/v1/projects/{id}`.
-- Create a deployment under a project: `POST /api/v1/projects/{projectId}/deployments`.
-- List project deployment history: `GET /api/v1/projects/{projectId}/deployments`.
-- Read deployment details: `GET /api/v1/deployments/{deploymentId}`.
-- Read persisted deployment logs: `GET /api/v1/deployments/{deploymentId}/logs?afterSequence=0&limit=50`.
+- `GET /api/v1/system`
+- `POST /api/v1/projects`, `GET /api/v1/projects`, `GET /api/v1/projects/{id}`
+- `POST /api/v1/projects/{projectId}/deployments`
+- `GET /api/v1/projects/{projectId}/deployments`
+- `GET /api/v1/deployments/{deploymentId}`
+- `GET /api/v1/deployments/{deploymentId}/logs?afterSequence=0&limit=50`
 
-A deployment follows `QUEUED → BUILDING → STARTING → HEALTH_CHECK → SUCCEEDED`. A failure from a nonterminal state records a failure reason. `SUCCEEDED` is only reached after the runtime adapter's health check passes. The response includes `applicationUrl` when successful.
+A deployment request stores a repository URL, source ref, and optional relative service path. Its state advances `QUEUED → BUILDING → STARTING → HEALTH_CHECK → SUCCEEDED`, with failure paths from nonterminal states. Log entries have a per-deployment sequence number and are returned using bounded cursor pagination.
 
-The log API uses sequence-based cursor pagination and bounded pages (1–100 entries). Each entry records its deployment, sequence number, timestamp, stage, stream, severity, and bounded message. Deployment state and diagnostic log entries remain separate records.
+## First build strategies
 
-## Local process adapter
+### Maven
+- Detect `pom.xml`.
+- Prefer `mvnw.cmd` / `mvnw` from the service directory or repository root; otherwise use installed Maven.
+- Run `test package`; a non-zero exit code fails the deployment.
+- The first launcher supports executable Spring Boot JARs. A generic library JAR or non-executable package is reported as unsupported rather than marked as deployed.
 
-The current implementation:
-- accepts only the configured, prebuilt trusted sample JAR; it does not clone the source repository or build arbitrary projects;
-- starts a separate Java process and allocates an available loopback port;
-- captures the child process's standard output and standard error into the deployment log service;
-- probes the application's `/health` endpoint until it passes or the configured timeout expires;
-- returns the loopback application URL and allows the worker to persist success only after health validation;
-- includes process-stop and shutdown handling in the adapter prototype.
+### npm
+- Detect `package.json` and require `package-lock.json` for the first implementation.
+- Run `npm ci`.
+- Run `npm test` if a usable test script exists; otherwise record a warning and skip the test step.
+- Run `npm run build` if configured.
+- Launch via `npm run preview` when configured (and a `dist/` directory exists), or `npm run start` if preview is unavailable.
+- Capture stdout and stderr separately as deployment log entries, cap individual log messages, and impose per-command timeouts.
 
-The sample JAR is built from `apps/samples/hello-service`. The sample JAR path setting is repository-root-relative; the local API launch working directory must match this assumption unless the property is overridden.
+The optional service path identifies a nested service in a monorepo. If discovery finds multiple candidate directories and no path is selected, the worker records the candidates in the logs and fails explicitly rather than guessing. Directories with both `pom.xml` and `package.json` are unsupported in this initial slice; split services into separate directories or define a clearer build plan later.
 
-Both `foundry.worker.enabled` and `foundry.runtime.local.enabled` are disabled by default. They must be explicitly enabled for local runtime testing.
+## Safe defaults and local configuration
 
-## Runtime boundary and safety
+```properties
+foundry.worker.enabled=false
+foundry.runtime.local.enabled=false
+foundry.runtime.local.sample-mode-enabled=false
+foundry.build.enabled=false
+foundry.build.workspace-root=.foundry/workspaces
+foundry.build.allowed-repositories=
+foundry.build.command-timeout-seconds=600
+```
 
-The sample binds to `127.0.0.1`, so its URL is local to the same machine. This is not a public deployment URL and the local process adapter is **not a sandbox**.
+For a local demonstration, enable the worker, runtime, and build flag and set `foundry.build.allowed-repositories` to the exact HTTPS GitHub repository URL. Keep sample-only mode disabled when testing real repository builds so a deployment cannot succeed by launching an unrelated prebuilt JAR.
 
-Not implemented:
-- repository checkout, ref resolution to an immutable commit, and build orchestration;
-- image building or Docker execution;
-- deployment authentication/authorization and tenant separation;
-- CPU, memory, filesystem, network, and execution-time isolation for workloads;
-- reliable multi-worker claiming, crash recovery, retries, and idempotency;
-- production log retention, secret redaction, and a dedicated high-volume log backend;
-- React dashboard and CI automation.
+The local adapter runs the service bound to `127.0.0.1`. Its generated URL is reachable only from the same machine, not from the public Internet.
 
-The planned first container runtime remains Docker, with cloud runtimes considered later only when justified. The local adapter is a smaller vertical slice to validate orchestration, logs, health checks, and the runtime interface before adding container complexity. Never expose arbitrary user code on the control-plane host.
+## System-design lessons and remaining boundaries
 
-## System-design principles demonstrated
+- **A build is not a deployment:** require a supported runnable artifact and a passing health check before persisting success.
+- **Command output is telemetry:** stdout, stderr, exit code, status, and timestamps explain what happened; status alone is not enough.
+- **Bound execution time:** commands have timeouts and processes are terminated when possible on timeout/interruption.
+- **Repository selection is not trust:** an allowlist is an explicit development guardrail, not isolation.
+- **Do not pass user-controlled commands through shell-string concatenation.** Use fixed build strategies and validated repository/ref/service-path values.
+- **Secrets are not implemented:** private-repository credentials, log redaction, and credential isolation must be designed before hosted use.
+- **Production gaps:** no container sandbox, resource limits, authenticated multi-tenancy, reliable queue recovery/retries, retention policy, or public application ingress yet.
+- **Frontend deployment is separate:** the dashboard currently uses a local Vite proxy. A hosted frontend/backend arrangement will need an API origin, CORS/auth configuration, and durable database setup.
 
-- **Persist before long work:** create a deployment record before the worker performs its steps.
-- **Explicit state machine:** keep legal transitions and terminal states explicit.
-- **Success means readiness:** a process start is not success until the application health endpoint passes.
-- **Separate status from diagnostics:** status answers which lifecycle stage is active; logs explain what happened.
-- **Bounded cursor pagination:** fetch incremental log entries without returning the full history on every request.
-- **Feature flags default off:** background processing and process launching must be explicitly enabled in local development.
-- **Control plane versus runtime:** HTTP/resource management is separate from the interface that launches and checks an application.
-- **Trust boundary first:** a host process or container is not, by itself, sufficient isolation for public multi-tenant arbitrary code execution.
+## Next checkpoints
 
-## Next engineering checkpoints
-
-1. **In progress:** exercise the concrete local adapter's process termination on health-check failure, worker exceptions, graceful shutdown, and forced termination. A regression test now proves that a mocked cleanup exception does not prevent a deployment from being marked `FAILED` (29 tests pass).
-2. Document repeatable local setup and the trusted-sample-only constraint.
-3. Design the isolated Docker adapter before enabling arbitrary source builds.
-4. Add idempotency, reliable job recovery, authorization, resource limits, and log redaction before any public workload execution.
+1. Check out the build branch locally, run API `clean test` and frontend `npm run build`, and fix compile issues.
+2. Run an allowlisted, trusted repository through the dashboard and verify logs for clone, detection, tests, build, startup, and health check.
+3. Exercise a failed Maven/npm command and verify a clear failed state with actual output.
+4. Only after local end-to-end proof, design isolated build workers and a publicly reachable runtime.

@@ -309,3 +309,25 @@ Push and verify the worker implementation. Then choose and implement a constrain
 ### Boundary and follow-up
 - This regression test uses a mocked runtime adapter to reproduce a cleanup exception deterministically. It does not by itself prove that every real OS-process cleanup or API-shutdown path is safe.
 - Next, test the concrete local adapter's process termination and shutdown behavior, including unsuccessful health checks and child processes that resist graceful termination. Then reassess the runtime lifecycle before starting the isolated Docker adapter.
+
+
+## Entry: Repository-to-deployment pipeline foundation (2026-10-23)
+
+### Implemented on `feat/repository-build-pipeline` — local verification pending
+- Added an opt-in repository build service with strict HTTPS GitHub URL normalization and an exact trusted-repository allowlist.
+- Clones the requested ref into a disposable workspace, discovers `pom.xml` and `package.json` files while skipping generated/dependency directories, and supports an optional service path for monorepos.
+- Maven strategy runs `test package` and only accepts an executable Spring Boot JAR as deployable.
+- npm strategy requires `package-lock.json`, runs `npm ci`, runs `npm test` when a usable script exists, runs `npm run build` when configured, and supports configured `preview` or `start` scripts.
+- A build-command runner captures stdout and stderr separately into the existing log stream, records command exit codes, and enforces per-command timeouts.
+- A repository-artifact runtime can launch an executable Spring Boot JAR or an npm preview/start process, then checks health before recording success.
+- Added the optional `servicePath` field to deployment requests/responses and an input in the dashboard.
+- Added an explicit sample-only mode flag so the prebuilt sample JAR cannot be mistaken for the registered repository's deployment.
+- Added unit tests for GitHub repository URL validation. The full local Maven suite and frontend production build still need to run against this branch.
+
+### Trust boundary and limitations
+- Repository builds remain disabled by default and require an exact trusted GitHub allowlist.
+- This code executes repository build scripts locally and is not a sandbox. Do not expose it to arbitrary public repositories.
+- First Maven support is executable Spring Boot JARs. First npm support requires a package lock and `preview` or `start` script. Private-repository authentication, container isolation, resource quotas, credential boundaries, log redaction, retries, and production ingress are not implemented.
+
+### Next validation
+Run Maven `clean test` and frontend `npm run build`, then test a trusted repository end to end and inspect persisted stdout/stderr/exit-code entries before calling this milestone verified.
