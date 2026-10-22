@@ -159,12 +159,12 @@ h1 span { color: #7259dd; }
 .loader { width: 18px; height: 18px; border: 2px solid #e6e1fa; border-top-color: #7d64e7; border-radius: 50%; animation: spin .85s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.deploy-form { margin: 0 20px 15px; padding: 12px; background: #f8f9fc; border: 1px solid #edf0f5; border-radius: 9px; display: grid; grid-template-columns: minmax(0,1fr) 108px 100px; gap: 11px; align-items: end; }
+.deploy-form { margin: 0 20px 15px; padding: 12px; background: #f8f9fc; border: 1px solid #edf0f5; border-radius: 9px; display: grid; grid-template-columns: minmax(100px,1fr) minmax(145px,1.25fr) 100px; gap: 11px; align-items: end; }
 .deploy-form-label { display: flex; align-items: center; gap: 8px; grid-column: 1/-1; color: #4b566a; font-size: 10px; }
 .deploy-form-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: #eeeaff; color: #755bdc; font-size: 14px; }
 .source-ref-field { display: grid; gap: 5px; min-width: 0; color: #8d97a9; font-size: 9px; font-weight: 700; }
 .source-ref-field input { padding: 9px 9px; font-size: 10px; }
-.deploy-button { height: 34px; padding: 0 10px; }
+.deploy-button { height: 34px; padding: 0 10px; }\n.service-path-field { min-width: 0; }
 .deployment-list { min-height: 176px; }
 .deployment-row { width: 100%; display: flex; align-items: center; gap: 10px; border: 0; border-top: 1px solid #f0f2f6; background: #fff; text-align: left; padding: 14px 18px; transition: background .15s; }
 .deployment-row:hover { background: #fafaff; }
@@ -290,7 +290,7 @@ h1 span { color: #7259dd; }
   .project-row { padding: 13px 12px; gap: 8px; }
   .project-row-meta { display: none; }
   .project-row-main > span { max-width: 205px; }
-  .deploy-form { margin: 0 11px 12px; grid-template-columns: minmax(0,1fr) 93px; gap: 8px; }
+  .deploy-form { margin: 0 11px 12px; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 8px; }
   .deploy-button { grid-column: 1/-1; width: 100%; }
   .deployment-row { padding: 12px 10px; gap: 7px; flex-wrap: wrap; }
   .deployment-main { max-width: calc(100% - 105px); }
