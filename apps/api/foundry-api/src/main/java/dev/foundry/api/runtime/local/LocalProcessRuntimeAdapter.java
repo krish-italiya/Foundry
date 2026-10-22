@@ -138,6 +138,11 @@ public class LocalProcessRuntimeAdapter implements RepositoryArtifactRuntime {
                     artifact.workspaceDirectory());
         } catch (IOException | RuntimeException failure) {
             workspaces.remove(deploymentId);
+            try {
+                deleteTree(artifact.workspaceDirectory());
+            } catch (IOException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
             throw failure;
         }
     }
