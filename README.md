@@ -48,25 +48,32 @@ This is the target architecture, not a claim that these components are already i
 
 ## Current implementation
 
-The code is on GitHub main. The latest verified vertical slice uses a **trusted, prebuilt JAR** to exercise the deployment workflow end to end.
+Foundry now has a React + TypeScript dashboard and a Spring Boot API. The dashboard manages projects, deployment records, status, and persisted logs.
 
-**Implemented and verified:**
-- Spring Boot 4.1.1 API using Oracle JDK 25, with system and project registration/list/retrieval endpoints.
-- Deployment creation, project deployment history, and deployment retrieval through the project-scoped deployment API.
-- Deployment state machine: QUEUED → BUILDING → STARTING → HEALTH_CHECK → SUCCEEDED, with a failure path from nonterminal states.
-- Persisted deployment logs and cursor-based reads. Pages are bounded to 1–100 entries and entries have per-deployment sequence numbers.
-- An opt-in worker/poller that records progress and delegates execution through a RuntimeAdapter.
-- A local process runtime adapter that launches the prebuilt trusted sample JAR, binds its application to loopback, captures standard output/error, probes /health, and only reports success after an HTTP 200 response containing the status UP marker.
-- The deployment response persists the resulting applicationUrl; a live request returned status SUCCEEDED, a populated URL, and completion timestamps.
-- Sample application source and Maven build file at apps/samples/hello-service.
-- IntelliJ HTTP Client requests in apps/api/foundry-api/requests/deployments.http.
-- The full Maven clean test command completed successfully during this check-in session.
+**Working vertical slices:**
+- Project registration/list/retrieval and deployment create/list/retrieval APIs.
+- Guarded deployment lifecycle with persisted timestamps, failure reason, and application URL.
+- Cursor-paginated deployment logs with ordered sequence numbers, bounded messages, and captured sample-process stdout/stderr.
+- An opt-in worker and local runtime adapter that can launch a prebuilt trusted sample JAR and verify its health endpoint.
+- A React + TypeScript + Vite dashboard in `apps/web` for project registration, deployment requests/history, log viewing, and application URLs.
+- An opt-in **repository build pipeline** on `feat/repository-build-pipeline`: an explicit GitHub repository allowlist, checkout of a source ref, detection of Maven/npm manifests, real build/test command execution, persisted stdout/stderr/exit-code logs, and local launch for supported Spring Boot JARs and npm preview/start scripts.
+- Frontend dependency lockfile and Vite proxy for local development.
 
-**Safe local defaults:** foundry.worker.enabled=false and foundry.runtime.local.enabled=false. Enable them explicitly for the trusted local demonstration. The configured sample JAR path is repository-root-relative, so run the API with the repository root as its working directory or override the property for your launch configuration.
+**Repository build configuration is disabled by default:**
+- `foundry.build.enabled=false`
+- `foundry.build.allowed-repositories=`
+- `foundry.worker.enabled=false`
+- `foundry.runtime.local.enabled=false`
+- `foundry.runtime.local.sample-mode-enabled=false`
 
-**Not implemented yet:** arbitrary repository checkout/build, image creation, Docker execution, the React dashboard, authentication/authorization, multi-tenant isolation, robust crash recovery, retries, and production log retention/redaction.
+The build pipeline only executes repositories explicitly listed in `foundry.build.allowed-repositories`. For local testing, temporarily enable the worker, local runtime, and build pipeline and add the exact HTTPS GitHub repository URL to the allowlist. The worker checks out the deployment's ref, selects a single detected service or requires a service path when multiple manifests are found, runs Maven tests/package or npm install/test/build, launches a supported artifact, and marks success only after a health check passes.
 
-The current local process adapter proves lifecycle orchestration and health checking; it is **not a sandbox** and must not be exposed as a service that executes untrusted code. The intended Docker runtime remains a later, separately isolated implementation.
+Supported first slice:
+- Maven services producing an executable Spring Boot JAR.
+- npm services with a `package-lock.json` and a `preview` or `start` script; `test` and `build` scripts run when configured.
+- One service directory per deployment, selected via the optional service path. If several candidate directories are present, Foundry logs the candidates instead of guessing.
+
+**Not a production platform yet:** the repository build branch still requires local compilation and end-to-end verification. Builds execute repository code; an allowlist is a development guardrail, not a sandbox. Do not expose this command runner publicly or allow untrusted repositories until isolated build/runtime workers, credentials handling, resource limits, and access controls exist. The local application URL is loopback-only.
 
 ## Build principles
 
@@ -80,7 +87,7 @@ The current local process adapter proves lifecycle orchestration and health chec
 
 ## Next milestone
 
-Harden and test the trusted local-runtime lifecycle, including failure cleanup and process termination. Then evaluate the first isolated Docker runtime. Do not start arbitrary repositories or expose workloads publicly before isolation, access control, and resource limits are designed.
+Verify the repository build pipeline locally against a trusted allowlisted repository: Maven test/package or npm ci/test/build, persisted command output, supported artifact startup, and a passing health check. Then move build execution into an isolated runtime before any public or arbitrary repository support.
 
 
 Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
