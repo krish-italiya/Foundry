@@ -13,6 +13,7 @@ import dev.foundry.api.deployment.log.DeploymentLogStream;
 import dev.foundry.api.runtime.RepositoryArtifactRuntime;
 import dev.foundry.api.runtime.RuntimeAdapter;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -39,6 +40,7 @@ public class DeploymentWorker {
     private final ObjectProvider<RuntimeAdapter> runtimeAdapters;
     private final ObjectProvider<RepositoryBuildService> repositoryBuildServices;
     private final ObjectProvider<RepositoryArtifactRuntime> artifactRuntimeAdapters;
+    private final boolean sampleModeEnabled;
 
     public DeploymentWorker(
             DeploymentExecutionService executionService,
@@ -46,13 +48,15 @@ public class DeploymentWorker {
             DeploymentLogService deploymentLogService,
             ObjectProvider<RuntimeAdapter> runtimeAdapters,
             ObjectProvider<RepositoryBuildService> repositoryBuildServices,
-            ObjectProvider<RepositoryArtifactRuntime> artifactRuntimeAdapters) {
+            ObjectProvider<RepositoryArtifactRuntime> artifactRuntimeAdapters,
+            @Value("${foundry.runtime.local.sample-mode-enabled:false}") boolean sampleModeEnabled) {
         this.executionService = executionService;
         this.deploymentService = deploymentService;
         this.deploymentLogService = deploymentLogService;
         this.runtimeAdapters = runtimeAdapters;
         this.repositoryBuildServices = repositoryBuildServices;
         this.artifactRuntimeAdapters = artifactRuntimeAdapters;
+        this.sampleModeEnabled = sampleModeEnabled;
     }
 
     public boolean processQueuedDeployment(UUID deploymentId) {
@@ -75,6 +79,15 @@ public class DeploymentWorker {
             appendLog(deploymentId, DeploymentLogStage.WORKER,
                     DeploymentLogSeverity.ERROR,
                     "Deployment marked FAILED: runtime adapter unavailable.");
+            return true;
+        }
+
+        if (!sampleModeEnabled) {
+            String reason = "Repository build pipeline is disabled. No repository checkout or build was performed; "
+                    + "the prebuilt sample runtime requires foundry.runtime.local.sample-mode-enabled=true.";
+            executionService.markFailed(deploymentId, reason);
+            appendLog(deploymentId, DeploymentLogStage.WORKER,
+                    DeploymentLogSeverity.ERROR, reason);
             return true;
         }
 
