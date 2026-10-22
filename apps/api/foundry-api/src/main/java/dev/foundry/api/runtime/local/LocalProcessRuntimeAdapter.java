@@ -86,6 +86,7 @@ public class LocalProcessRuntimeAdapter implements RepositoryArtifactRuntime {
             throw new IOException("Repository build did not produce a supported runnable artifact.");
         }
 
+        workspaces.put(deploymentId, artifact.workspaceDirectory());
         int port = reserveLoopbackPort();
         List<String> command = new ArrayList<>();
         Path workingDirectory = artifact.serviceDirectory();
