@@ -13,7 +13,7 @@ Start the backend in one terminal from the repository root:
 
 ```powershell
 cd apps/api/foundry-api
-.`.`/mvnw.cmd spring-boot:run
+.\mvnw.cmd spring-boot:run
 ```
 
 Start the dashboard in another terminal:
@@ -36,4 +36,6 @@ Open http://127.0.0.1:5173. Vite proxies `/api` and `/actuator` requests to the 
 
 The backend worker and local runtime are disabled by default. A new deployment may remain `QUEUED` unless you explicitly enable the trusted local worker/runtime and build the sample JAR. The current runtime only launches a prebuilt trusted sample JAR; it does not clone or build arbitrary repositories.
 
-This is a local development SPA, not yet a public production deployment. A separately hosted dashboard/backend setup will need an intentional API base URL and CORS/auth configuration.
+For a separately hosted frontend, set `VITE_API_BASE_URL` (see `.env.example`) to the API origin. That deployment also needs an intentional CORS and authentication configuration on the API.
+
+This is a local development SPA, not yet a public production deployment.
