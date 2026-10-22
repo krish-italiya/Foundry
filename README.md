@@ -48,32 +48,28 @@ This is the target architecture, not a claim that these components are already i
 
 ## Current implementation
 
-Foundry now has a React + TypeScript dashboard and a Spring Boot API. The dashboard manages projects, deployment records, status, and persisted logs.
+Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The dashboard manages projects, deployment records, status, and persisted logs.
 
-**Working vertical slices:**
+**Implemented control-plane and local-runtime capabilities:**
 - Project registration/list/retrieval and deployment create/list/retrieval APIs.
-- Guarded deployment lifecycle with persisted timestamps, failure reason, and application URL.
-- Cursor-paginated deployment logs with ordered sequence numbers, bounded messages, and captured sample-process stdout/stderr.
-- An opt-in worker and local runtime adapter that can launch a prebuilt trusted sample JAR and verify its health endpoint.
-- A React + TypeScript + Vite dashboard in `apps/web` for project registration, deployment requests/history, log viewing, and application URLs.
-- An opt-in **repository build pipeline** on `feat/repository-build-pipeline`: an explicit GitHub repository allowlist, checkout of a source ref, detection of Maven/npm manifests, real build/test command execution, persisted stdout/stderr/exit-code logs, and local launch for supported Spring Boot JARs and npm preview/start scripts.
-- Frontend dependency lockfile and Vite proxy for local development.
+- Guarded deployment lifecycle with persisted timestamps, failure reason, optional service path, and application URL.
+- Cursor-paginated deployment logs with ordered sequence numbers, bounded messages, and captured stdout/stderr.
+- An opt-in worker and local runtime adapter for a trusted prebuilt sample JAR.
+- React + TypeScript + Vite dashboard in `apps/web` for project registration, deployment requests/history, log viewing, and application URLs.
 
-**Repository build configuration is disabled by default:**
-- `foundry.build.enabled=false`
-- `foundry.build.allowed-repositories=`
-- `foundry.worker.enabled=false`
-- `foundry.runtime.local.enabled=false`
-- `foundry.runtime.local.sample-mode-enabled=false`
+**Repository build pipeline (on `feat/repository-build-pipeline`; verification pending):**
+- Explicit allowlist of trusted HTTPS GitHub repository URLs.
+- Checkout of the requested ref into a disposable workspace.
+- Manifest discovery for Maven `pom.xml` and npm `package.json`; optional service path for monorepos.
+- Maven `test package`, or npm `ci`, configured `test`, and configured `build` commands.
+- Persisted command stdout/stderr and exit-code log entries with per-command timeouts.
+- Launch of supported executable Spring Boot JARs or npm `preview`/`start` scripts, followed by a real health check.
 
-The build pipeline only executes repositories explicitly listed in `foundry.build.allowed-repositories`. For local testing, temporarily enable the worker, local runtime, and build pipeline and add the exact HTTPS GitHub repository URL to the allowlist. The worker checks out the deployment's ref, selects a single detected service or requires a service path when multiple manifests are found, runs Maven tests/package or npm install/test/build, launches a supported artifact, and marks success only after a health check passes.
+**Safe defaults:** `foundry.build.enabled=false`, `foundry.build.allowed-repositories=`, `foundry.worker.enabled=false`, `foundry.runtime.local.enabled=false`, and `foundry.runtime.local.sample-mode-enabled=false`. All must be configured deliberately for a local trusted-repository demonstration.
 
-Supported first slice:
-- Maven services producing an executable Spring Boot JAR.
-- npm services with a `package-lock.json` and a `preview` or `start` script; `test` and `build` scripts run when configured.
-- One service directory per deployment, selected via the optional service path. If several candidate directories are present, Foundry logs the candidates instead of guessing.
+The first Maven strategy accepts executable Spring Boot JARs. The first npm strategy requires `package-lock.json` and a usable `preview` or `start` script; test/build scripts run when configured. If multiple services are detected, select the service path explicitly instead of letting the system guess.
 
-**Not a production platform yet:** the repository build branch still requires local compilation and end-to-end verification. Builds execute repository code; an allowlist is a development guardrail, not a sandbox. Do not expose this command runner publicly or allow untrusted repositories until isolated build/runtime workers, credentials handling, resource limits, and access controls exist. The local application URL is loopback-only.
+**Important boundary:** the repository build pipeline executes source-repository scripts on the local host. An allowlist is not a sandbox. Do not expose this runner publicly or execute untrusted repositories until isolated build/runtime workers, credentials boundaries, resource limits, and access controls exist. The local application URL is loopback-only. The new pipeline branch still needs to compile and be exercised end to end locally before it should be merged.
 
 ## Build principles
 
@@ -87,7 +83,7 @@ Supported first slice:
 
 ## Next milestone
 
-Verify the repository build pipeline locally against a trusted allowlisted repository: Maven test/package or npm ci/test/build, persisted command output, supported artifact startup, and a passing health check. Then move build execution into an isolated runtime before any public or arbitrary repository support.
+Harden and test the trusted local-runtime lifecycle, including failure cleanup and process termination. Then evaluate the first isolated Docker runtime. Do not start arbitrary repositories or expose workloads publicly before isolation, access control, and resource limits are designed.
 
 
 Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
