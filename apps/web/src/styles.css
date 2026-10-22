@@ -164,7 +164,8 @@ h1 span { color: #7259dd; }
 .deploy-form-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: #eeeaff; color: #755bdc; font-size: 14px; }
 .source-ref-field { display: grid; gap: 5px; min-width: 0; color: #8d97a9; font-size: 9px; font-weight: 700; }
 .source-ref-field input { padding: 9px 9px; font-size: 10px; }
-.deploy-button { height: 34px; padding: 0 10px; }\n.service-path-field { min-width: 0; }
+.deploy-button { height: 34px; padding: 0 10px; }
+.service-path-field { min-width: 0; }
 .deployment-list { min-height: 176px; }
 .deployment-row { width: 100%; display: flex; align-items: center; gap: 10px; border: 0; border-top: 1px solid #f0f2f6; background: #fff; text-align: left; padding: 14px 18px; transition: background .15s; }
 .deployment-row:hover { background: #fafaff; }
