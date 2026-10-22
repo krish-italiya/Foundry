@@ -20,6 +20,7 @@ type Deployment = {
   projectId: string;
   sourceRepositoryUrl: string;
   sourceRef: string;
+  servicePath: string | null;
   status: DeploymentStatus;
   createdAt: string;
   startedAt: string | null;
@@ -127,6 +128,7 @@ function App() {
   const [projectName, setProjectName] = useState("");
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [sourceRef, setSourceRef] = useState("main");
+  const [servicePath, setServicePath] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
   const [creatingDeployment, setCreatingDeployment] = useState(false);
   const [pageError, setPageError] = useState("");
@@ -304,7 +306,7 @@ function App() {
         "/api/v1/projects/" + encodeURIComponent(selectedProjectId) + "/deployments",
         {
           method: "POST",
-          body: JSON.stringify({ sourceRef: sourceRef.trim() })
+          body: JSON.stringify({ sourceRef: sourceRef.trim(), servicePath: servicePath.trim() || null })
         }
       );
       setDeployments((current) => [created, ...current.filter((deployment) => deployment.id !== created.id)]);
@@ -519,6 +521,10 @@ function App() {
                     <span>Source ref</span>
                     <input value={sourceRef} onChange={(event) => setSourceRef(event.target.value)} placeholder="main" maxLength={255} required />
                   </label>
+                  <label className="source-ref-field service-path-field">
+                    <span>Service path (optional)</span>
+                    <input value={servicePath} onChange={(event) => setServicePath(event.target.value)} placeholder="Auto-detect or apps/api" maxLength={512} />
+                  </label>
                   <button className="button button-primary deploy-button" type="submit" disabled={creatingDeployment}>
                     {creatingDeployment ? "Queueing…" : "Deploy"} <span>→</span>
                   </button>
@@ -531,7 +537,7 @@ function App() {
                 ) : loadingDeployments && deployments.length === 0 ? (
                   <div className="empty-state compact-empty"><div className="loader" /><strong>Loading deployment history</strong></div>
                 ) : deployments.length === 0 ? (
-                  <div className="empty-state compact-empty"><div className="empty-illustration"><span>↗</span><i /><b /></div><strong>No deployments yet</strong><span>Queue your first deployment using the source ref above.</span></div>
+                  <div className="empty-state compact-empty"><div className="empty-illustration"><span>↗</span><i /><b /></div><strong>No deployments yet</strong><span>Queue your first deployment. Leave service path blank to auto-detect a single project.</span></div>
                 ) : deployments.map((deployment, index) => (
                   <button
                     key={deployment.id}
@@ -541,7 +547,7 @@ function App() {
                     <span className={"deployment-symbol deployment-symbol-" + deployment.status.toLowerCase().replace("_", "-")}>{deployment.status === "SUCCEEDED" ? "✓" : deployment.status === "FAILED" ? "!" : "↗"}</span>
                     <span className="deployment-main">
                       <span className="deployment-title">Release <b>#{shortId(deployment.id)}</b></span>
-                      <span className="deployment-meta"><span>{deployment.sourceRef}</span><i>·</i>{timeLabel(deployment.createdAt)}</span>
+                      <span className="deployment-meta"><span>{deployment.sourceRef}</span>{deployment.servicePath && <><i>·</i><span>{deployment.servicePath}</span></>}<i>·</i>{timeLabel(deployment.createdAt)}</span>
                     </span>
                     <StatusBadge status={deployment.status} />
                     <span className="row-chevron">›</span>
@@ -578,7 +584,7 @@ function App() {
             {selectedDeployment?.status === "QUEUED" && (
               <div className="queue-note">
                 <span className="queue-note-icon">i</span>
-                <span><strong>Deployment is queued.</strong> The worker and local runtime are disabled by default. Enable them explicitly in the backend configuration to run the trusted sample JAR.</span>
+                <span><strong>Deployment is queued.</strong> Repository builds are disabled by default. Enable the trusted repository build pipeline and allowlist this GitHub repository before starting a build.</span>
               </div>
             )}
 
