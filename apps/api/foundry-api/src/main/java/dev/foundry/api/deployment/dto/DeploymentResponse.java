@@ -15,6 +15,7 @@ public record DeploymentResponse(
         Instant startedAt,
         Instant completedAt,
         String failureReason,
-        String applicationUrl
+        String applicationUrl,
+        String servicePath
 ) {
 }
