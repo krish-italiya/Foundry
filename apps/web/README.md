@@ -26,6 +26,12 @@ npm run dev
 
 Open http://127.0.0.1:5173. Vite proxies `/api` and `/actuator` requests to the API at http://127.0.0.1:8080, so local development does not require browser CORS configuration.
 
+## Repository-build pipeline branch
+
+The repository-to-deployment pipeline is being built on `feat/repository-build-pipeline`. The build feature remains disabled by default. Before using it locally, set `foundry.build.enabled=true`, `foundry.worker.enabled=true`, `foundry.runtime.local.enabled=true`, and add the exact trusted HTTPS GitHub URL to `foundry.build.allowed-repositories`. The worker clones only allowlisted repositories. Use source code you trust; build scripts execute code on the local host and are not sandboxed.
+
+For multi-service repositories, fill in **Service path** in the deployment form, for example `apps/web` or `apps/api/foundry-api`. Leave it blank only if repository discovery finds one unambiguous supported manifest. The first Maven path requires an executable Spring Boot JAR. The first npm path requires a `package-lock.json` and a `preview` or `start` script.
+
 ## First dashboard slice
 
 - Register and select projects.
