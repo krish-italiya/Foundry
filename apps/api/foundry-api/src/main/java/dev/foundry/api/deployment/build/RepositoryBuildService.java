@@ -330,7 +330,7 @@ public class RepositoryBuildService {
                 serviceDirectory,
                 artifactPath,
                 BuiltArtifact.LaunchMode.SPRING_BOOT_JAR,
-                hasActuator ? "/actuator/health" : descriptor.launchMode(),
+                hasActuator ? "/actuator/health" : "/",
                 hasActuator ? "\"status\":\"UP\"" : "");
     }
 
@@ -451,7 +451,6 @@ public class RepositoryBuildService {
             }
             return "https://github.com/" + owner + "/" + name;
         } catch (IllegalArgumentException invalid) {
-            if (invalid instanceof RepositoryBuildException buildFailure) throw buildFailure;
             throw new RepositoryBuildException("Invalid GitHub repository URL.", invalid);
         }
     }
