@@ -97,6 +97,16 @@ public class LocalProcessRuntimeAdapter implements RepositoryArtifactRuntime {
         environment.put("HOSTNAME", "127.0.0.1");
 
         switch (artifact.launchMode()) {
+            case JAVA_JAR -> {
+                if (artifact.artifactPath() == null || !Files.isRegularFile(artifact.artifactPath())) {
+                    throw new IOException("Built Java JAR is missing.");
+                }
+                command.add(javaExecutable().toString());
+                command.add("-jar");
+                command.add(artifact.artifactPath().toString());
+                // Foundry's first plain-Java runtime contract passes its assigned HTTP port as argument one.
+                command.add(Integer.toString(port));
+            }
             case SPRING_BOOT_JAR -> {
                 if (artifact.artifactPath() == null || !Files.isRegularFile(artifact.artifactPath())) {
                     throw new IOException("Built Spring Boot JAR is missing.");
