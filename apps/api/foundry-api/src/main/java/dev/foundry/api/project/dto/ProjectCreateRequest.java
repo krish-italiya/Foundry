@@ -11,7 +11,12 @@ public record ProjectCreateRequest(
 
         @NotBlank(message = "Repository URL is required")
         @Size(max = 2048, message = "Repository URL cannot exceed 2048 characters")
-        String repositoryUrl
+        String repositoryUrl,
+
+        boolean buildTrusted
 
 ) {
+    public ProjectCreateRequest(String name, String repositoryUrl) {
+        this(name, repositoryUrl, false);
+    }
 }
