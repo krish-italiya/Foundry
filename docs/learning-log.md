@@ -360,3 +360,28 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - Project trust and the administrator allowlist are local execution gates, **not a sandbox**. They do not make public multi-user or remotely accessible builds safe. The build worker still needs process/filesystem isolation, resource limits, secret handling, and proper authentication before public use.
 - Run Maven `clean test` and `npm run build` on Windows; fix any compiler/TypeScript/test issues.
 - Verify project registration and trust state survive an API restart. Then register a repository without adding it to `foundry.build.allowed-repositories`, opt in via the dashboard, deploy it, revoke trust, and confirm subsequent builds are denied.
+
+
+## Entry: Local application ingress and host-based routing (2026-10-25)
+
+### Implemented on `feat/local-application-routing`; local verification pending
+- Separated internal runtime target addresses (the app process's `127.0.0.1:ephemeral-port`) from the user-facing application URL.
+- Introduced a stable per-deployment URL shape: `http://{deployment-uuid}.localhost:8080`.
+- Added hostname parsing that routes only a single valid UUID under the `.localhost` suffix.
+- Added a servlet filter that proxies matching requests to the active deployment's private loopback URL, preserving method, request path, query string, request headers, and body, then relaying status, response headers, and body.
+- Unknown or stopped deployment hosts return 404; ordinary Foundry API hostnames continue through normal Spring MVC routing.
+- Added focused tests for local URL creation/validation and an HTTP proxy round trip. The new routing changes have not yet been run through the Windows Maven suite.
+
+### Concepts and interview connections
+- **Ingress / reverse proxy:** a front door that receives client requests and forwards them to a backend service selected by host/path.
+- **Host-based routing:** the HTTP hostname identifies the destination application; Foundry uses a deployment UUID subdomain.
+- **Internal target vs. public URL:** the service stays bound to loopback; the stable hostname is a proxy address, not the process's own listening socket.
+- **Hop-by-hop headers:** connection-specific headers must not be blindly copied through a proxy because they describe one HTTP connection, not the end-to-end request.
+- **Loopback-only hostname:** `.localhost` is for same-machine preview; this does not create a DNS record or an Internet-reachable service.
+- **Active runtime registry:** routing only succeeds while the adapter still has an active-process mapping for the deployment ID.
+
+### Boundaries and next validation
+- This local router is not a production reverse proxy. Public deployment requires TLS/DNS, authentication and authorization, request limits, timeout/rate policies, safe forwarding-header rules, durable runtime mapping/recovery, and isolated workloads.
+- Runtime registry state is in memory. The API's `@PreDestroy` cleanup stops child processes; after API restart, persisted deployment records may say `SUCCEEDED` while the process is gone. The local host URL then correctly returns 404, but lifecycle reconciliation is a future task.
+- Run API `clean test` and frontend `npm run build`; fix any compile/test errors before merging.
+- Verify a live Express deployment receives a `.localhost:8080` URL and the browser can navigate paths and load assets through the router.
