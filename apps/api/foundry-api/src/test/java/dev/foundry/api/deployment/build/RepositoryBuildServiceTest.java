@@ -46,6 +46,25 @@ class RepositoryBuildServiceTest {
     }
 
     @Test
+    void recognizesPackageLockAsReproducibleNpmLockfile() throws IOException {
+        Files.createFile(temporaryDirectory.resolve("package-lock.json"));
+
+        assertThat(RepositoryBuildService.hasReproducibleNpmLockfile(temporaryDirectory)).isTrue();
+    }
+
+    @Test
+    void recognizesNpmShrinkwrapAsReproducibleNpmLockfile() throws IOException {
+        Files.createFile(temporaryDirectory.resolve("npm-shrinkwrap.json"));
+
+        assertThat(RepositoryBuildService.hasReproducibleNpmLockfile(temporaryDirectory)).isTrue();
+    }
+
+    @Test
+    void allowsNpmProjectsWithoutLockfileToUseInstallFallback() {
+        assertThat(RepositoryBuildService.hasReproducibleNpmLockfile(temporaryDirectory)).isFalse();
+    }
+
+    @Test
     void normalizesPublicHttpsGitHubRepositoryUrl() {
         assertThat(RepositoryBuildService.normalizeGitHubRepository(
                 "https://github.com/OpenAI/example.git"))
