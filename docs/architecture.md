@@ -1,6 +1,6 @@
 # Foundry Architecture — Repository-to-Deployment Pipeline
 
-Status: **local product prototype; repository build pipeline is implemented on `feat/repository-build-pipeline` and still needs local compile and end-to-end verification**.
+Status: **local product prototype; repository builds and project-level trust have been exercised locally. The local subdomain ingress changes are on `feat/local-application-routing` and still need local compile and request-routing verification.**
 
 ## Current path
 
@@ -32,8 +32,13 @@ BuiltArtifact
 LocalProcessRuntimeAdapter
             |
             +---- executable Spring Boot JAR OR npm preview/start
-            +---- loopback URL
-            +---- HTTP health check
+            +---- private 127.0.0.1:ephemeral-port process
+            +---- HTTP health check against the private target
+            |
+            +---- local ingress filter:
+                   {deployment-id}.localhost:8080
+                   -> active deployment lookup
+                   -> reverse proxy to private loopback target
             |
             v
 Persist SUCCEEDED only after health check passes
@@ -86,7 +91,9 @@ foundry.build.command-timeout-seconds=600
 
 For a local demonstration, enable the worker, runtime, and build flag. Register the repository and explicitly enable its `Build trust` setting in the dashboard; this trust state is stored in a local file-backed H2 database and can be revoked. The exact HTTPS `foundry.build.allowed-repositories` setting remains an optional administrator override. Tests use an isolated in-memory H2 database. Keep sample-only mode disabled when testing real repository builds so a deployment cannot succeed by launching an unrelated prebuilt JAR.
 
-The local adapter runs the service bound to `127.0.0.1`. Its generated URL is reachable only from the same machine, not from the public Internet.
+The runtime binds the application process to `127.0.0.1` on an ephemeral port. The local ingress returns `http://{deployment-id}.localhost:8080` and proxies requests for that UUID host to the registered active process. This preserves paths, query strings, request headers, and request bodies for a useful local preview. Requests for unknown or stopped deployment hosts return 404. The `.localhost` URL resolves to loopback; it is reachable only from the same machine, not from the public Internet.
+
+The ingress is deliberately a local-development seam, not production ingress. Runtime-to-deployment mappings are in memory and are removed when the process stops; API restart terminates workloads rather than recovering them. Request size/rate limits, durable process recovery, public TLS/DNS, authentication, and isolation still need design before hosting arbitrary projects on the Internet.
 
 ## System-design lessons and remaining boundaries
 
@@ -96,12 +103,12 @@ The local adapter runs the service bound to `127.0.0.1`. Its generated URL is re
 - **Repository selection is not trust:** registration records the source; project build trust is a separate, explicit consent gate. The administrator allowlist can override project trust for local development, but neither is a sandbox.
 - **Do not pass user-controlled commands through shell-string concatenation.** Use fixed build strategies and validated repository/ref/service-path values.
 - **Secrets are not implemented:** private-repository credentials, log redaction, and credential isolation must be designed before hosted use.
-- **Production gaps:** no container sandbox, resource limits, authenticated multi-tenancy, reliable queue recovery/retries, retention policy, or public application ingress yet.
+- **Production gaps:** no container sandbox, request/build resource limits, authenticated multi-tenancy, reliable queue recovery/retries, retention policy, public TLS/DNS ingress, or durable runtime recovery yet.
 - **Frontend deployment is separate:** the dashboard currently uses a local Vite proxy. A hosted frontend/backend arrangement will need an API origin, CORS/auth configuration, and durable database setup.
 
 ## Next checkpoints
 
-1. Pull `feat/npm-lockfile-fallback`; run API `clean test` and frontend `npm run build` to verify project trust UI/API and persistence changes.
-2. Restart the API and confirm registered projects and build-trust decisions remain present.
-3. Deploy a trusted repository without adding it to the administrator allowlist; revoke trust and verify a subsequent build is blocked.
-4. Only after local end-to-end proof, design isolated build workers and a publicly reachable runtime.
+1. Pull `feat/local-application-routing`; run API `clean test` and frontend `npm run build`.
+2. Deploy the Express test app and open the returned `{deployment-id}.localhost:8080` URL; test query strings, static assets, and a stopped/unknown deployment host.
+3. Verify API shutdown removes child processes and that stale URLs return 404 after restart.
+4. Design isolated runtime workers and public DNS/TLS ingress only after the local route and lifecycle are dependable.
