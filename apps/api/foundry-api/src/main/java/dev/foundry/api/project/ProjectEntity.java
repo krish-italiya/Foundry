@@ -19,6 +19,9 @@ public class ProjectEntity {
     @Column(name = "repository_url", nullable = false, length = 2048)
     private String repositoryUrl;
 
+    @Column(name = "build_trusted", nullable = false)
+    private boolean buildTrusted;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -27,8 +30,13 @@ public class ProjectEntity {
     }
 
     public ProjectEntity(String name, String repositoryUrl) {
+        this(name, repositoryUrl, false);
+    }
+
+    public ProjectEntity(String name, String repositoryUrl, boolean buildTrusted) {
         this.name = name;
         this.repositoryUrl = repositoryUrl;
+        this.buildTrusted = buildTrusted;
     }
 
     @PrePersist
@@ -48,6 +56,14 @@ public class ProjectEntity {
 
     public String getRepositoryUrl() {
         return repositoryUrl;
+    }
+
+    public boolean isBuildTrusted() {
+        return buildTrusted;
+    }
+
+    public void setBuildTrusted(boolean buildTrusted) {
+        this.buildTrusted = buildTrusted;
     }
 
     public Instant getCreatedAt() {
