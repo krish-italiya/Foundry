@@ -331,3 +331,32 @@ Push and verify the worker implementation. Then choose and implement a constrain
 
 ### Next validation
 Run Maven `clean test` and frontend `npm run build`, then test a trusted repository end to end and inspect persisted stdout/stderr/exit-code entries before calling this milestone verified.
+
+
+## Entry: Repository onboarding and per-project build trust (2026-10-25)
+
+### Verified deployment milestones from the current local workflow
+- The Java sample repository completed checkout, Maven `verify`, runnable-JAR selection, launch, and HTTP health check.
+- The independent Instacv and Airbnb Clone React/Vite repositories completed `npm ci`, production builds, Vite Preview startup, and health checks using explicit service paths when needed.
+- A standalone Express repository with no npm lockfile completed the warned `npm install` fallback, launched on Foundry's assigned `PORT`, and passed the health check.
+- The current API test suite had reached **37 passing tests** before the latest trust-onboarding changes. The new trust endpoints and persistence changes have **not yet been locally verified**.
+
+### New implementation in progress on `feat/npm-lockfile-fallback`
+- Added a persisted `buildTrusted` decision to each registered project, defaulting to false.
+- Added a project registration consent checkbox, a project-level trust status, and a reversible `Trust repository` / `Revoke trust` action.
+- Added `PATCH /api/v1/projects/{id}/build-trust`.
+- Updated the build service to verify that the deployment's registered project matches the repository URL and requires project trust or an explicit local administrator allowlist entry before cloning/building.
+- Changed local H2 configuration to a git-ignored file-backed database so registered projects and trust decisions can survive API restarts. Added a separate in-memory H2 test database to avoid mutating local data during integration tests.
+- Added integration tests for default-untrusted registration, explicit trust, toggling trust on/off, unknown project handling, and rejection of an untrusted build before any command execution.
+
+### Concepts and interview connections
+- **Explicit trust/consent gate:** registering a repository is not the same as authorizing its build scripts to execute.
+- **Least privilege:** a new project is untrusted by default; local execution requires a deliberate opt-in or a configured administrator exception.
+- **Reversible authorization:** trust can be revoked without deleting and re-registering the project.
+- **Durable metadata:** file-backed H2 survives ordinary process restarts; tests use an isolated in-memory database to avoid side effects.
+- **Reproducible dependency installation:** `npm ci` is preferred when a lockfile exists; `npm install` fallback is explicitly warned because dependency resolution can drift.
+
+### Security boundary and next validation
+- Project trust and the administrator allowlist are local execution gates, **not a sandbox**. They do not make public multi-user or remotely accessible builds safe. The build worker still needs process/filesystem isolation, resource limits, secret handling, and proper authentication before public use.
+- Run Maven `clean test` and `npm run build` on Windows; fix any compiler/TypeScript/test issues.
+- Verify project registration and trust state survive an API restart. Then register a repository without adding it to `foundry.build.allowed-repositories`, opt in via the dashboard, deploy it, revoke trust, and confirm subsequent builds are denied.
