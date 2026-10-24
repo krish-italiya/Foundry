@@ -12,6 +12,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -55,9 +56,70 @@ class ProjectControllerIntegrationTest {
                 .andExpect(jsonPath("$.name").value("hello-world"))
                 .andExpect(jsonPath("$.repositoryUrl")
                         .value("https://github.com/example/hello-world"))
-                .andExpect(jsonPath("$.createdAt").exists());
+                .andExpect(jsonPath("$.createdAt").exists())
+                .andExpect(jsonPath("$.buildTrusted").value(false));
 
         assertThat(projectRepository.count()).isEqualTo(1L);
+    }
+
+    @Test
+    void createProjectCanExplicitlyTrustRepositoryForBuilds() throws Exception {
+        String request = """
+                {
+                  "name": "trusted-project",
+                  "repositoryUrl": "https://github.com/example/trusted-project",
+                  "buildTrusted": true
+                }
+                """;
+
+        mockMvc.perform(post(PROJECTS_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.buildTrusted").value(true));
+
+        ProjectEntity saved = projectRepository.findAll().getFirst();
+        assertThat(saved.isBuildTrusted()).isTrue();
+    }
+
+    @Test
+    void buildTrustCanBeEnabledAndRevokedWithoutReregistering() throws Exception {
+        ProjectEntity project = projectRepository.save(new ProjectEntity(
+                "existing-project",
+                "https://github.com/example/existing-project"
+        ));
+
+        mockMvc.perform(patch(PROJECTS_URL + "/" + project.getId() + "/build-trust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"buildTrusted": true}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.buildTrusted").value(true));
+
+        assertThat(projectRepository.findById(project.getId()).orElseThrow().isBuildTrusted())
+                .isTrue();
+
+        mockMvc.perform(patch(PROJECTS_URL + "/" + project.getId() + "/build-trust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"buildTrusted": false}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.buildTrusted").value(false));
+
+        assertThat(projectRepository.findById(project.getId()).orElseThrow().isBuildTrusted())
+                .isFalse();
+    }
+
+    @Test
+    void unknownProjectBuildTrustUpdateShouldReturnNotFound() throws Exception {
+        mockMvc.perform(patch(PROJECTS_URL + "/" + UUID.randomUUID() + "/build-trust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"buildTrusted": true}
+                                """))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -96,6 +158,7 @@ class ProjectControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("demo-project"))
                 .andExpect(jsonPath("$[0].repositoryUrl")
-                        .value("https://github.com/example/demo-project"));
+                        .value("https://github.com/example/demo-project"))
+                .andExpect(jsonPath("$[0].buildTrusted").value(false));
     }
 }
