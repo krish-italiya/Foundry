@@ -7,6 +7,7 @@ public record ProjectResponse(
         UUID id,
         String name,
         String repositoryUrl,
-        Instant createdAt
+        Instant createdAt,
+        boolean buildTrusted
 ) {
 }
