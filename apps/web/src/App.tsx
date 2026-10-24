@@ -614,7 +614,7 @@ function App() {
                   <div className="empty-state compact-empty"><div className="loader" /><strong>Loading deployment history</strong></div>
                 ) : deployments.length === 0 ? (
                   <div className="empty-state compact-empty"><div className="empty-illustration"><span>↗</span><i /><b /></div><strong>No deployments yet</strong><span>Queue your first deployment. Leave service path blank to auto-detect a single project.</span></div>
-                ) : deployments.map((deployment, index) => (
+                ) : deployments.map((deployment) => (
                   <button
                     key={deployment.id}
                     className={"deployment-row " + (deployment.id === selectedDeploymentId ? "deployment-row-selected" : "")}
