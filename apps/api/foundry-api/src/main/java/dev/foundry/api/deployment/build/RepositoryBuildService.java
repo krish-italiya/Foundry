@@ -6,6 +6,8 @@ import dev.foundry.api.deployment.log.DeploymentLogService;
 import dev.foundry.api.deployment.log.DeploymentLogSeverity;
 import dev.foundry.api.deployment.log.DeploymentLogStage;
 import dev.foundry.api.deployment.log.DeploymentLogStream;
+import dev.foundry.api.project.ProjectEntity;
+import dev.foundry.api.project.ProjectRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -45,6 +47,7 @@ public class RepositoryBuildService {
 
     private final BuildCommandRunner commandRunner;
     private final DeploymentLogService logService;
+    private final ProjectRepository projectRepository;
     private final JsonMapper objectMapper;
     private final Path workspaceRoot;
     private final List<String> allowedRepositories;
@@ -54,12 +57,14 @@ public class RepositoryBuildService {
             BuildCommandRunner commandRunner,
             DeploymentLogService logService,
             JsonMapper objectMapper,
+            ProjectRepository projectRepository,
             @Value("${foundry.build.workspace-root:.foundry/workspaces}") String workspaceRoot,
             @Value("${foundry.build.allowed-repositories:}") String allowedRepositories,
             @Value("${foundry.build.command-timeout-seconds:600}") long commandTimeoutSeconds) {
         this.commandRunner = commandRunner;
         this.logService = logService;
         this.objectMapper = objectMapper;
+        this.projectRepository = projectRepository;
         this.workspaceRoot = Path.of(workspaceRoot).toAbsolutePath().normalize();
         this.allowedRepositories = allowedRepositories.isBlank()
                 ? List.of()
@@ -77,16 +82,26 @@ public class RepositoryBuildService {
 
     public BuiltArtifact build(
             UUID deploymentId,
+            UUID projectId,
             String repositoryUrl,
             String sourceRef,
             String requestedServicePath) {
         String normalizedRepository = normalizeGitHubRepository(repositoryUrl);
-        if (allowedRepositories.isEmpty()
-                || !allowedRepositories.contains(normalizedRepository)) {
+        ProjectEntity project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new RepositoryBuildException(
+                        "The registered Foundry project could not be found. Register the repository again."));
+
+        String registeredRepository = normalizeGitHubRepository(project.getRepositoryUrl());
+        if (!registeredRepository.equals(normalizedRepository)) {
             throw new RepositoryBuildException(
-                    "Repository builds are restricted to explicitly trusted GitHub repositories. "
-                            + "Add " + normalizedRepository
-                            + " to foundry.build.allowed-repositories for a local development run.");
+                    "The deployment repository does not match the repository registered for this Foundry project.");
+        }
+
+        boolean administratorAllowlisted = allowedRepositories.contains(normalizedRepository);
+        if (!administratorAllowlisted && !project.isBuildTrusted()) {
+            throw new RepositoryBuildException(
+                    "This repository is not trusted for builds yet. Open the project in Foundry and enable Build trust. "
+                            + "Build commands and repository-defined scripts execute on this local machine.");
         }
         validateRef(sourceRef);
         String servicePath = normalizeServicePath(requestedServicePath);
@@ -362,17 +377,25 @@ public class RepositoryBuildService {
         Path packageFile = serviceDirectory.resolve("package.json");
         JsonNode packageJson = objectMapper.readTree(packageFile.toFile());
         JsonNode scripts = packageJson.path("scripts");
-        boolean hasLockfile = Files.isRegularFile(serviceDirectory.resolve("package-lock.json"));
-        if (!hasLockfile) {
-            throw new RepositoryBuildException(
-                    "This first npm pipeline requires package-lock.json so dependencies are installed reproducibly.");
-        }
+        boolean hasLockfile = hasReproducibleNpmLockfile(serviceDirectory);
 
         List<String> npmPrefix = List.of(isWindows() ? "npm.cmd" : "npm");
         append(deploymentId, DeploymentLogStream.DEPLOYMENT,
                 DeploymentLogSeverity.INFO, "NPM build started.");
-        commandRunner.run(deploymentId, serviceDirectory,
-                concat(npmPrefix, List.of("ci")), commandTimeout, Map.of("CI", "true"));
+        if (hasLockfile) {
+            append(deploymentId, DeploymentLogStream.DEPLOYMENT,
+                    DeploymentLogSeverity.INFO,
+                    "Using npm ci because a reproducible npm lockfile is present.");
+            commandRunner.run(deploymentId, serviceDirectory,
+                    concat(npmPrefix, List.of("ci")), commandTimeout, Map.of("CI", "true"));
+        } else {
+            append(deploymentId, DeploymentLogStream.DEPLOYMENT,
+                    DeploymentLogSeverity.WARN,
+                    "No package-lock.json or npm-shrinkwrap.json was found. Falling back to npm install; "
+                            + "dependency versions may change between deployments until a lockfile is committed.");
+            commandRunner.run(deploymentId, serviceDirectory,
+                    concat(npmPrefix, List.of("install")), commandTimeout, Map.of("CI", "true"));
+        }
 
         String testScript = scripts.path("test").asText("");
         if (usableScript(testScript)) {
@@ -473,6 +496,11 @@ public class RepositoryBuildService {
         } catch (IllegalArgumentException invalid) {
             throw new RepositoryBuildException("Invalid GitHub repository URL.", invalid);
         }
+    }
+
+    static boolean hasReproducibleNpmLockfile(Path serviceDirectory) {
+        return Files.isRegularFile(serviceDirectory.resolve("package-lock.json"))
+                || Files.isRegularFile(serviceDirectory.resolve("npm-shrinkwrap.json"));
     }
 
     private static boolean usableScript(String script) {

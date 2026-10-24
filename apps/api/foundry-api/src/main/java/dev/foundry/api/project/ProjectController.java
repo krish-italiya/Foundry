@@ -1,5 +1,6 @@
 package dev.foundry.api.project;
 
+import dev.foundry.api.project.dto.ProjectBuildTrustRequest;
 import dev.foundry.api.project.dto.ProjectCreateRequest;
 import dev.foundry.api.project.dto.ProjectResponse;
 import jakarta.validation.Valid;
@@ -39,6 +40,15 @@ public class ProjectController {
     @GetMapping
     public List<ProjectResponse> findAll() {
         return projectService.findAll();
+    }
+
+    @PatchMapping("/{id}/build-trust")
+    public ResponseEntity<ProjectResponse> updateBuildTrust(
+            @PathVariable UUID id,
+            @Valid @RequestBody ProjectBuildTrustRequest request) {
+        return projectService.updateBuildTrust(id, request.buildTrusted())
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/{id}")

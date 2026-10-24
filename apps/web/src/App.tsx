@@ -5,6 +5,7 @@ type Project = {
   name: string;
   repositoryUrl: string;
   createdAt: string;
+  buildTrusted: boolean;
 };
 
 type DeploymentStatus =
@@ -127,6 +128,8 @@ function App() {
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [repositoryUrl, setRepositoryUrl] = useState("");
+  const [buildTrustedOnCreate, setBuildTrustedOnCreate] = useState(false);
+  const [updatingBuildTrust, setUpdatingBuildTrust] = useState(false);
   const [sourceRef, setSourceRef] = useState("main");
   const [servicePath, setServicePath] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
@@ -279,19 +282,58 @@ function App() {
     try {
       const created = await api<Project>("/api/v1/projects", {
         method: "POST",
-        body: JSON.stringify({ name: projectName.trim(), repositoryUrl: repositoryUrl.trim() })
+        body: JSON.stringify({
+          name: projectName.trim(),
+          repositoryUrl: repositoryUrl.trim(),
+          buildTrusted: buildTrustedOnCreate
+        })
       });
       setProjects((current) => [created, ...current.filter((project) => project.id !== created.id)]);
       setSelectedProjectId(created.id);
       setProjectName("");
       setRepositoryUrl("");
+      setBuildTrustedOnCreate(false);
       setProjectFormOpen(false);
-      setNotice("Project registered. You can now request a deployment.");
+      setNotice(created.buildTrusted
+        ? "Project registered and trusted for local builds."
+        : "Project registered. Enable Build trust before running repository build scripts.");
       setApiState("online");
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Could not register the project.");
     } finally {
       setCreatingProject(false);
+    }
+  }
+
+  async function handleToggleBuildTrust() {
+    if (!selectedProject || updatingBuildTrust) return;
+
+    const buildTrusted = !selectedProject.buildTrusted;
+    if (buildTrusted && !window.confirm(
+      "Trust this repository for local builds? Foundry will execute repository-defined build and start scripts on this computer. Continue only if you trust this code."
+    )) {
+      return;
+    }
+
+    setPageError("");
+    setNotice("");
+    setUpdatingBuildTrust(true);
+    try {
+      const updated = await api<Project>(
+        "/api/v1/projects/" + encodeURIComponent(selectedProject.id) + "/build-trust",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ buildTrusted })
+        }
+      );
+      setProjects((current) => current.map((project) => project.id === updated.id ? updated : project));
+      setNotice(buildTrusted
+        ? "Build trust enabled for " + updated.name + ". You no longer need to add this project to the administrator allowlist."
+        : "Build trust revoked for " + updated.name + ".");
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Could not update repository build trust.");
+    } finally {
+      setUpdatingBuildTrust(false);
     }
   }
 
@@ -465,6 +507,18 @@ function App() {
                     Repository URL
                     <input type="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/org/repository" maxLength={2048} required />
                   </label>
+                  <label className="trust-consent">
+                    <input
+                      className="trust-consent-input"
+                      type="checkbox"
+                      checked={buildTrustedOnCreate}
+                      onChange={(event) => setBuildTrustedOnCreate(event.target.checked)}
+                    />
+                    <span className="trust-consent-copy">
+                      <strong>Trust this repository for local builds</strong>
+                      <small>Foundry may run dependency install, build, test and start scripts from this repository on this computer. Enable only for code you trust.</small>
+                    </span>
+                  </label>
                   <div className="form-actions">
                     <button type="button" className="button button-quiet" onClick={() => setProjectFormOpen(false)}>Cancel</button>
                     <button className="button button-primary" type="submit" disabled={creatingProject}>
@@ -495,6 +549,9 @@ function App() {
                       <span className="project-row-main">
                         <strong>{project.name}</strong>
                         <span title={project.repositoryUrl}>{project.repositoryUrl.replace(/^https?:\/\/(www\.)?/, "")}</span>
+                        <span className={"project-trust-label " + (project.buildTrusted ? "project-trust-enabled" : "project-trust-disabled")}>
+                          {project.buildTrusted ? "Build trust enabled" : "Build trust off"}
+                        </span>
                       </span>
                       <span className="project-row-meta">{timeLabel(project.createdAt).split(",")[0]}</span>
                       <span className="row-chevron">›</span>
@@ -513,6 +570,25 @@ function App() {
                   <p>{selectedProject ? "History for " + selectedProject.name : "Select a project to view releases."}</p>
                 </div>
               </div>
+
+              {selectedProject && (
+                <div className={"project-trust-banner " + (selectedProject.buildTrusted ? "project-trust-banner-enabled" : "project-trust-banner-disabled")}>
+                  <div className="project-trust-banner-copy">
+                    <strong>{selectedProject.buildTrusted ? "Repository trusted for local builds" : "Repository build trust is off"}</strong>
+                    <p>{selectedProject.buildTrusted
+                      ? "Foundry may execute this repository's build and start scripts on this computer. Revoke trust to block future builds unless an administrator allowlists it."
+                      : "Trust this repository here to avoid manually editing the API allowlist. A configured administrator allowlist can still override this project setting."}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className={"button " + (selectedProject.buildTrusted ? "button-quiet" : "button-primary")}
+                    onClick={() => void handleToggleBuildTrust()}
+                    disabled={updatingBuildTrust}
+                  >
+                    {updatingBuildTrust ? "Saving…" : selectedProject.buildTrusted ? "Revoke trust" : "Trust repository"}
+                  </button>
+                </div>
+              )}
 
               {selectedProject && (
                 <form className="deploy-form" onSubmit={handleCreateDeployment}>
@@ -538,7 +614,7 @@ function App() {
                   <div className="empty-state compact-empty"><div className="loader" /><strong>Loading deployment history</strong></div>
                 ) : deployments.length === 0 ? (
                   <div className="empty-state compact-empty"><div className="empty-illustration"><span>↗</span><i /><b /></div><strong>No deployments yet</strong><span>Queue your first deployment. Leave service path blank to auto-detect a single project.</span></div>
-                ) : deployments.map((deployment, index) => (
+                ) : deployments.map((deployment) => (
                   <button
                     key={deployment.id}
                     className={"deployment-row " + (deployment.id === selectedDeploymentId ? "deployment-row-selected" : "")}
@@ -584,7 +660,7 @@ function App() {
             {selectedDeployment?.status === "QUEUED" && (
               <div className="queue-note">
                 <span className="queue-note-icon">i</span>
-                <span><strong>Deployment is queued.</strong> Repository builds are disabled by default. Enable the trusted repository build pipeline and allowlist this GitHub repository before starting a build.</span>
+                <span><strong>Deployment is queued.</strong> Foundry will only execute repository builds for projects with Build trust enabled or repositories explicitly trusted by the local administrator.</span>
               </div>
             )}
 

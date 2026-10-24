@@ -20,12 +20,21 @@ public class ProjectService {
     public ProjectResponse register(ProjectCreateRequest request) {
         ProjectEntity project = new ProjectEntity(
                 request.name().trim(),
-                request.repositoryUrl().trim()
+                request.repositoryUrl().trim(),
+                request.buildTrusted()
         );
 
         ProjectEntity savedProject = projectRepository.save(project);
 
         return toResponse(savedProject);
+    }
+
+    public Optional<ProjectResponse> updateBuildTrust(UUID id, boolean buildTrusted) {
+        return projectRepository.findById(id)
+                .map(project -> {
+                    project.setBuildTrusted(buildTrusted);
+                    return toResponse(projectRepository.save(project));
+                });
     }
 
     public List<ProjectResponse> findAll() {
@@ -45,7 +54,8 @@ public class ProjectService {
                 project.getId(),
                 project.getName(),
                 project.getRepositoryUrl(),
-                project.getCreatedAt()
+                project.getCreatedAt(),
+                project.isBuildTrusted()
         );
     }
 }

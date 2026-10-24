@@ -57,19 +57,18 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 - An opt-in worker and local runtime adapter for a trusted prebuilt sample JAR.
 - React + TypeScript + Vite dashboard in `apps/web` for project registration, deployment requests/history, log viewing, and application URLs.
 
-**Repository build pipeline (on `feat/repository-build-pipeline`; verification pending):**
-- Explicit allowlist of trusted HTTPS GitHub repository URLs.
-- Checkout of the requested ref into a disposable workspace.
+**Repository build pipeline (tested locally; current onboarding changes are on `feat/npm-lockfile-fallback` and still need a fresh verification run):**
+- Checkout of an explicitly selected HTTPS GitHub repository/ref into a disposable workspace.
 - Manifest discovery for Maven `pom.xml` and npm `package.json`; optional service path for monorepos.
-- Maven `test package`, or npm `ci`, configured `test`, and configured `build` commands.
+- Maven `verify`; supports executable Spring Boot JARs and ordinary runnable JARs with a `Main-Class` manifest entry.
+- npm prefers `npm ci` when `package-lock.json` or `npm-shrinkwrap.json` exists; otherwise it warns and falls back to `npm install`. Configured tests and builds run when available.
 - Persisted command stdout/stderr and exit-code log entries with per-command timeouts.
-- Launch of supported executable Spring Boot JARs or npm `preview`/`start` scripts, followed by a real health check.
+- Launch of supported Java JARs or npm `preview`/`start` scripts, followed by a real health check.
+- Per-project build trust is explicitly opt-in in the dashboard, stored in the local database, and can be revoked. The administrator allowlist remains an optional local override.
 
-**Safe defaults:** `foundry.build.enabled=false`, `foundry.build.allowed-repositories=`, `foundry.worker.enabled=false`, `foundry.runtime.local.enabled=false`, and `foundry.runtime.local.sample-mode-enabled=false`. All must be configured deliberately for a local trusted-repository demonstration.
+**Safe defaults:** `foundry.build.enabled=false`, `foundry.build.allowed-repositories=`, `foundry.worker.enabled=false`, `foundry.runtime.local.enabled=false`, and `foundry.runtime.local.sample-mode-enabled=false`. Enable these deliberately for a local demonstration. Registering a URL alone does not authorize running its scripts; trust it explicitly in the dashboard or use the local administrator allowlist.
 
-The first Maven strategy accepts executable Spring Boot JARs. The first npm strategy requires `package-lock.json` and a usable `preview` or `start` script; test/build scripts run when configured. If multiple services are detected, select the service path explicitly instead of letting the system guess.
-
-**Important boundary:** the repository build pipeline executes source-repository scripts on the local host. An allowlist is not a sandbox. Do not expose this runner publicly or execute untrusted repositories until isolated build/runtime workers, credentials boundaries, resource limits, and access controls exist. The local application URL is loopback-only. The new pipeline branch still needs to compile and be exercised end to end locally before it should be merged.
+**Important boundary:** repository builds execute source-repository scripts on the local host. Project trust is an explicit local consent/authorization step, not a sandbox. Do not expose this runner publicly or execute untrusted repositories until isolated build/runtime workers, credentials boundaries, resource limits, authentication, and access controls exist. Application URLs are loopback-only.
 
 ## Build principles
 

@@ -142,6 +142,7 @@ public class DeploymentWorker {
 
             BuiltArtifact artifact = buildService.build(
                     deploymentId,
+                    deployment.projectId(),
                     deployment.sourceRepositoryUrl(),
                     deployment.sourceRef(),
                     deployment.servicePath());
