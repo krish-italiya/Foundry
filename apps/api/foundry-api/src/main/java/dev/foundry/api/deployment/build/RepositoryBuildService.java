@@ -362,17 +362,25 @@ public class RepositoryBuildService {
         Path packageFile = serviceDirectory.resolve("package.json");
         JsonNode packageJson = objectMapper.readTree(packageFile.toFile());
         JsonNode scripts = packageJson.path("scripts");
-        boolean hasLockfile = Files.isRegularFile(serviceDirectory.resolve("package-lock.json"));
-        if (!hasLockfile) {
-            throw new RepositoryBuildException(
-                    "This first npm pipeline requires package-lock.json so dependencies are installed reproducibly.");
-        }
+        boolean hasLockfile = hasReproducibleNpmLockfile(serviceDirectory);
 
         List<String> npmPrefix = List.of(isWindows() ? "npm.cmd" : "npm");
         append(deploymentId, DeploymentLogStream.DEPLOYMENT,
                 DeploymentLogSeverity.INFO, "NPM build started.");
-        commandRunner.run(deploymentId, serviceDirectory,
-                concat(npmPrefix, List.of("ci")), commandTimeout, Map.of("CI", "true"));
+        if (hasLockfile) {
+            append(deploymentId, DeploymentLogStream.DEPLOYMENT,
+                    DeploymentLogSeverity.INFO,
+                    "Using npm ci because a reproducible npm lockfile is present.");
+            commandRunner.run(deploymentId, serviceDirectory,
+                    concat(npmPrefix, List.of("ci")), commandTimeout, Map.of("CI", "true"));
+        } else {
+            append(deploymentId, DeploymentLogStream.DEPLOYMENT,
+                    DeploymentLogSeverity.WARN,
+                    "No package-lock.json or npm-shrinkwrap.json was found. Falling back to npm install; "
+                            + "dependency versions may change between deployments until a lockfile is committed.");
+            commandRunner.run(deploymentId, serviceDirectory,
+                    concat(npmPrefix, List.of("install")), commandTimeout, Map.of("CI", "true"));
+        }
 
         String testScript = scripts.path("test").asText("");
         if (usableScript(testScript)) {
@@ -473,6 +481,11 @@ public class RepositoryBuildService {
         } catch (IllegalArgumentException invalid) {
             throw new RepositoryBuildException("Invalid GitHub repository URL.", invalid);
         }
+    }
+
+    static boolean hasReproducibleNpmLockfile(Path serviceDirectory) {
+        return Files.isRegularFile(serviceDirectory.resolve("package-lock.json"))
+                || Files.isRegularFile(serviceDirectory.resolve("npm-shrinkwrap.json"));
     }
 
     private static boolean usableScript(String script) {
