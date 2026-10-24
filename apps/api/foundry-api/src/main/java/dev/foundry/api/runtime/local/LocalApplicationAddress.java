@@ -20,8 +20,7 @@ public final class LocalApplicationAddress {
         try {
             URI uri = URI.create(value == null ? "" : value.trim());
             String scheme = uri.getScheme();
-            boolean supportedScheme = "http".equalsIgnoreCase(scheme)
-                    || "https".equalsIgnoreCase(scheme);
+            boolean supportedScheme = "http".equalsIgnoreCase(scheme);
             boolean rootPath = uri.getPath() == null
                     || uri.getPath().isEmpty()
                     || "/".equals(uri.getPath());
@@ -35,7 +34,7 @@ public final class LocalApplicationAddress {
                     || uri.getPort() == 0
                     || uri.getPort() > 65535) {
                 throw new IllegalArgumentException(
-                        "Local application base URL must be an HTTP(S) localhost URL without a path.");
+                        "Local application base URL must be an HTTP localhost URL without a path.");
             }
             return new URI(
                     scheme.toLowerCase(Locale.ROOT),
