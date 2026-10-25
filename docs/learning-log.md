@@ -389,13 +389,18 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 
 ## Entry: Runtime lifecycle reconciliation (2026-10-25)
 
-### Implemented on `feat/runtime-lifecycle-reconciliation`; local verification pending
+### Implemented and verified locally on `feat/runtime-lifecycle-reconciliation`
 - Separated deployment status from runtime state. `SUCCEEDED` records that the initial health check passed; it does not guarantee the process remains alive later.
 - Added `RuntimeState`: `NOT_STARTED`, `RUNNING`, `STOPPED`, `CRASHED`, and `INTERRUPTED`.
-- Added process liveness inspection to the local runtime adapter.
-- Added a scheduled local monitor that checks persisted successful deployments, marks an exited process `CRASHED`, and marks a successful record with no process tracked after a Foundry restart `INTERRUPTED`.
+- Added process liveness inspection to the local runtime adapter and a scheduled monitor that reconciles persisted successful deployments against the in-memory process registry.
 - Exposed runtime state through the deployment response and dashboard detail strip.
-- Added tests for the entity's runtime state transitions and monitor behavior. The branch still requires a clean Windows Maven test run and frontend production build.
+- Windows API Maven suite passed: **54 tests, 0 failures, 0 errors, 0 skipped**. The frontend production build passed.
+- End-to-end deployed `render-examples/express-hello-world`: Foundry cloned the repository, installed dependencies, launched Express on a dynamic local port, passed the health check, and served the app through its UUID `.localhost:8080` URL.
+
+### Live lifecycle experiments
+- **Application process exit:** stopped only the verified Express process (`node app.js`) while Foundry remained running. The dashboard changed runtime state from `RUNNING` to `CRASHED` and emitted `Application process exited unexpectedly; marked CRASHED.`
+- **Foundry API restart:** restarted the API after a deployment had succeeded. The new API process no longer tracked that deployment's application process, so the monitor changed its runtime state to `INTERRUPTED` and emitted `Deployment runtime is not tracked by the current Foundry process; marked INTERRUPTED.`
+- In both cases, the original deployment status remained `SUCCEEDED`, intentionally distinguishing the initial rollout result from current runtime availability.
 
 ### Concepts and interview connections
 - **Deployment state vs. runtime state:** successful rollout is an event in time; it is not an ongoing health guarantee.
@@ -406,7 +411,5 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 
 ### Boundaries and next validation
 - This monitor detects process unavailability; it does not restart applications, perform retries, or provide sandboxing.
-- Run API `clean test` and frontend `npm run build` on Windows.
-- Deploy Express through local ingress, stop only its child process, and observe `CRASHED` plus 404 routing.
-- Restart Foundry and confirm a previously successful deployment with no active process becomes `INTERRUPTED`.
-- Public hosting remains out of scope until isolated execution and public TLS/DNS ingress are designed and validated.
+- The tested `.localhost` URL is local preview only, not public Internet hosting.
+- Public hosting remains out of scope until execution isolation, resource limits, access controls, and public TLS/DNS ingress are designed and validated.
