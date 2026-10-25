@@ -66,6 +66,7 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 - Launch of supported Java JARs or npm `preview`/`start` scripts, followed by a real health check.
 - Per-project build trust is explicitly opt-in in the dashboard, stored in the local database, and can be revoked. The administrator allowlist remains an optional local override.
 - A local ingress filter gives active deployments stable `http://{deployment-id}.localhost:8080` URLs and proxies requests to their private loopback ports. This is for local development, not public hosting.
+- Runtime state is tracked separately from the initial deployment result. A local monitor identifies exited applications as `CRASHED` and successful records whose process is no longer tracked after a Foundry restart as `INTERRUPTED`. It detects failures but does not restart workloads.
 
 **Safe defaults:** `foundry.build.enabled=false`, `foundry.build.allowed-repositories=`, `foundry.worker.enabled=false`, `foundry.runtime.local.enabled=false`, and `foundry.runtime.local.sample-mode-enabled=false`. Enable these deliberately for a local demonstration. Registering a URL alone does not authorize running its scripts; trust it explicitly in the dashboard or use the local administrator allowlist.
 
@@ -83,7 +84,7 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 
 ## Next milestone
 
-Harden and test the trusted local-runtime lifecycle, including failure cleanup and process termination. Then evaluate the first isolated Docker runtime. Do not start arbitrary repositories or expose workloads publicly before isolation, access control, and resource limits are designed.
+Finish and locally verify runtime lifecycle reconciliation, then evaluate an isolated runtime worker. Runtime monitoring improves diagnosis but does not restart applications or sandbox them. Do not run arbitrary repositories or expose workloads publicly before isolation, access control, and resource limits are designed.
 
 
 Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
