@@ -16,6 +16,8 @@ type DeploymentStatus =
   | "SUCCEEDED"
   | "FAILED";
 
+type RuntimeState = "NOT_STARTED" | "RUNNING" | "STOPPED" | "CRASHED" | "INTERRUPTED";
+
 type Deployment = {
   id: string;
   projectId: string;
@@ -28,6 +30,7 @@ type Deployment = {
   completedAt: string | null;
   failureReason: string | null;
   applicationUrl: string | null;
+  runtimeState: RuntimeState;
 };
 
 type LogEntry = {
@@ -93,6 +96,10 @@ function shortId(value: string): string {
 
 function statusLabel(status: DeploymentStatus): string {
   return status.replace("_", " ").toLowerCase();
+}
+
+function runtimeStateLabel(state: RuntimeState): string {
+  return state.replace("_", " ").toLowerCase();
 }
 
 function StatusBadge({ status }: { status: DeploymentStatus }) {
@@ -649,6 +656,7 @@ function App() {
                 <div className="detail-item"><span>CREATED</span><strong>{timeLabel(selectedDeployment.createdAt)}</strong></div>
                 <div className="detail-item"><span>STARTED</span><strong>{timeLabel(selectedDeployment.startedAt)}</strong></div>
                 <div className="detail-item"><span>COMPLETED</span><strong>{timeLabel(selectedDeployment.completedAt)}</strong></div>
+                <div className={"detail-item runtime-state-item runtime-state-" + selectedDeployment.runtimeState.toLowerCase().replace("_", "-")}><span>RUNTIME</span><strong>{runtimeStateLabel(selectedDeployment.runtimeState)}</strong></div>
                 <div className="detail-item detail-url"><span>APPLICATION URL</span>
                   {selectedDeployment.applicationUrl ? <a href={selectedDeployment.applicationUrl} target="_blank" rel="noreferrer">{selectedDeployment.applicationUrl}<span> ↗</span></a> : <strong className="no-url">Not available yet</strong>}
                 </div>
