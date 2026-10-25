@@ -67,7 +67,8 @@ public class DeploymentService {
                 deployment.getCompletedAt(),
                 deployment.getFailureReason(),
                 deployment.getApplicationUrl(),
-                deployment.getServicePath()
+                deployment.getServicePath(),
+                deployment.getRuntimeState()
         );
     }
 }

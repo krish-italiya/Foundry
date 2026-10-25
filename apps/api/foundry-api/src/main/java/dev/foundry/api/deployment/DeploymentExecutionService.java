@@ -51,6 +51,11 @@ public class DeploymentExecutionService {
     }
 
     @Transactional
+    public boolean markRuntimeState(UUID deploymentId, RuntimeState runtimeState) {
+        return lockedDeployment(deploymentId).markRuntimeState(runtimeState);
+    }
+
+    @Transactional
     public void markFailed(
             UUID deploymentId,
             String reason) {

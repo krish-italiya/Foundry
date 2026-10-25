@@ -1,6 +1,6 @@
 # Foundry Architecture — Repository-to-Deployment Pipeline
 
-Status: **local product prototype; repository builds and project-level trust have been exercised locally. The local subdomain ingress changes are on `feat/local-application-routing` and still need local compile and request-routing verification.**
+Status: **local product prototype; repository builds, project-level trust, local subdomain routing, and runtime lifecycle reconciliation have been verified on Windows. The runtime monitor detects an exited application as `CRASHED` and a previously successful deployment no longer tracked after a Foundry API restart as `INTERRUPTED`.**
 
 ## Current path
 
@@ -93,6 +93,8 @@ For a local demonstration, enable the worker, runtime, and build flag. Register 
 
 The runtime binds the application process to `127.0.0.1` on an ephemeral port. The local ingress returns `http://{deployment-id}.localhost:8080` and proxies requests for that UUID host to the registered active process. This preserves paths, query strings, request headers, and request bodies for a useful local preview. Requests for unknown or stopped deployment hosts return 404. The `.localhost` URL resolves to loopback; it is reachable only from the same machine, not from the public Internet.
 
+The deployment's initial `SUCCEEDED` status means its first health check passed; it is not an ongoing health guarantee. The local runtime monitor records a separate `runtimeState`: `RUNNING`, `CRASHED`, or `INTERRUPTED`. A process that exits while Foundry is running is marked `CRASHED`; a previously successful deployment with no process tracked after a Foundry restart is marked `INTERRUPTED`. Monitoring is detection-only and does not restart processes.
+
 The ingress is deliberately a local-development seam, not production ingress. Runtime-to-deployment mappings are in memory and are removed when the process stops; API restart terminates workloads rather than recovering them. Request size/rate limits, durable process recovery, public TLS/DNS, authentication, and isolation still need design before hosting arbitrary projects on the Internet.
 
 ## System-design lessons and remaining boundaries
@@ -103,12 +105,19 @@ The ingress is deliberately a local-development seam, not production ingress. Ru
 - **Repository selection is not trust:** registration records the source; project build trust is a separate, explicit consent gate. The administrator allowlist can override project trust for local development, but neither is a sandbox.
 - **Do not pass user-controlled commands through shell-string concatenation.** Use fixed build strategies and validated repository/ref/service-path values.
 - **Secrets are not implemented:** private-repository credentials, log redaction, and credential isolation must be designed before hosted use.
-- **Production gaps:** no container sandbox, request/build resource limits, authenticated multi-tenancy, reliable queue recovery/retries, retention policy, public TLS/DNS ingress, or durable runtime recovery yet.
+- **Production gaps:** no container sandbox, request/build resource limits, authenticated multi-tenancy, reliable queue recovery/retries, retention policy, public TLS/DNS ingress, automatic application restart, or durable runtime recovery yet.
 - **Frontend deployment is separate:** the dashboard currently uses a local Vite proxy. A hosted frontend/backend arrangement will need an API origin, CORS/auth configuration, and durable database setup.
+
+## Verified locally
+
+- Windows API Maven suite passed: **54 tests, 0 failures, 0 errors, 0 skipped**.
+- Frontend production build passed.
+- Deployed `render-examples/express-hello-world` from GitHub through checkout, npm install, process startup, and health check. The app rendered through its UUID `.localhost:8080` URL.
+- Stopping the verified `node app.js` process changed runtime state to `CRASHED` and recorded a runtime log.
+- Restarting the Foundry API changed a previously successful deployment with no process tracked by the new API process to `INTERRUPTED` and recorded the reconciliation log.
 
 ## Next checkpoints
 
-1. Pull `feat/local-application-routing`; run API `clean test` and frontend `npm run build`.
-2. Deploy the Express test app and open the returned `{deployment-id}.localhost:8080` URL; test query strings, static assets, and a stopped/unknown deployment host.
-3. Verify API shutdown removes child processes and that stale URLs return 404 after restart.
-4. Design isolated runtime workers and public DNS/TLS ingress only after the local route and lifecycle are dependable.
+1. Merge the reviewed lifecycle-reconciliation change and synchronize the local branch.
+2. Continue hardening local runtime behavior and cleanup, including stale URL/route checks after a process exits.
+3. Design isolated runtime workers, resource limits, and public DNS/TLS ingress before attempting public hosting.

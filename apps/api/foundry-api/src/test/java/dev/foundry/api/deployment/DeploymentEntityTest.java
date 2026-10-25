@@ -21,6 +21,7 @@ class DeploymentEntityTest {
         DeploymentEntity deployment = newDeployment();
 
         assertEquals(DeploymentStatus.QUEUED, deployment.getStatus());
+        assertEquals(RuntimeState.NOT_STARTED, deployment.getRuntimeState());
         assertNotNull(deployment.getCreatedAt());
         assertEquals(
                 "https://github.com/example/hello-world",
@@ -43,9 +44,39 @@ class DeploymentEntityTest {
         deployment.markHealthCheckPassed();
 
         assertEquals(DeploymentStatus.SUCCEEDED, deployment.getStatus());
+        assertEquals(RuntimeState.RUNNING, deployment.getRuntimeState());
         assertNotNull(deployment.getCompletedAt());
         assertNull(deployment.getFailureReason());
         assertTrue(deployment.getStatus().isTerminal());
+    }
+
+    @Test
+    void runtimeCanTransitionFromRunningToCrashedOnlyOnce() {
+        DeploymentEntity deployment = newDeployment();
+        deployment.transitionTo(DeploymentStatus.BUILDING);
+        deployment.transitionTo(DeploymentStatus.STARTING);
+        deployment.transitionTo(DeploymentStatus.HEALTH_CHECK);
+        deployment.markHealthCheckPassed();
+
+        assertTrue(deployment.markRuntimeState(RuntimeState.CRASHED));
+        assertEquals(RuntimeState.CRASHED, deployment.getRuntimeState());
+        assertFalse(deployment.markRuntimeState(RuntimeState.INTERRUPTED));
+    }
+
+    @Test
+    void runtimeCannotBeMarkedUnavailableBeforeDeploymentSucceeds() {
+        DeploymentEntity deployment = newDeployment();
+
+        assertFalse(deployment.markRuntimeState(RuntimeState.CRASHED));
+        assertEquals(RuntimeState.NOT_STARTED, deployment.getRuntimeState());
+    }
+
+    @Test
+    void cannotMarkRuntimeAsNotStartedDuringReconciliation() {
+        DeploymentEntity deployment = newDeployment();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> deployment.markRuntimeState(RuntimeState.NOT_STARTED));
     }
 
     @Test

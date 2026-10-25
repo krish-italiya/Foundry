@@ -79,6 +79,15 @@ public class LocalProcessRuntimeAdapter implements RepositoryArtifactRuntime {
         return Optional.ofNullable(applicationUrls.get(deploymentId));
     }
 
+    /**
+     * @return empty when this adapter does not own the deployment process,
+     * otherwise the process's current alive state.
+     */
+    public Optional<Boolean> processAlive(UUID deploymentId) {
+        Process process = processes.get(deploymentId);
+        return process == null ? Optional.empty() : Optional.of(process.isAlive());
+    }
+
     @Override
     public URI start(UUID deploymentId) throws IOException {
         if (!Files.isRegularFile(sampleJar)) {

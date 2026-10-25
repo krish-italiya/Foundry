@@ -30,4 +30,8 @@ public interface DeploymentRepository
     Optional<DeploymentEntity> findFirstByStatusOrderByCreatedAtAsc(
             DeploymentStatus status
     );
+
+    List<DeploymentEntity> findAllByStatusOrderByCreatedAtAsc(
+            DeploymentStatus status
+    );
 }
