@@ -1,6 +1,7 @@
 package dev.foundry.api.deployment.dto;
 
 import dev.foundry.api.deployment.DeploymentStatus;
+import dev.foundry.api.deployment.RuntimeState;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,6 +17,7 @@ public record DeploymentResponse(
         Instant completedAt,
         String failureReason,
         String applicationUrl,
-        String servicePath
+        String servicePath,
+        RuntimeState runtimeState
 ) {
 }
