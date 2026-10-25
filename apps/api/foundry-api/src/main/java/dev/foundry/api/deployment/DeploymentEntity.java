@@ -56,6 +56,10 @@ public class DeploymentEntity {
     @Column(name = "service_path", length = 512, updatable = false)
     private String servicePath;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "runtime_state", length = 32)
+    private RuntimeState runtimeState;
+
     protected DeploymentEntity() {
         // Required by JPA.
     }
@@ -92,6 +96,7 @@ public class DeploymentEntity {
             this.servicePath = normalizedPath.equals(".") ? null : normalizedPath;
         }
         this.status = DeploymentStatus.QUEUED;
+        this.runtimeState = RuntimeState.NOT_STARTED;
         this.createdAt = Instant.now();
     }
 
@@ -133,6 +138,7 @@ public class DeploymentEntity {
         }
 
         status = DeploymentStatus.SUCCEEDED;
+        runtimeState = RuntimeState.RUNNING;
         completedAt = Instant.now();
     }
 
@@ -171,6 +177,22 @@ public class DeploymentEntity {
         status = DeploymentStatus.FAILED;
         failureReason = normalizedReason;
         completedAt = Instant.now();
+    }
+
+    /**
+     * Marks a previously healthy process as unavailable. Returns false if the
+     * deployment is no longer SUCCEEDED/RUNNING, making repeated polls idempotent.
+     */
+    public boolean markRuntimeState(RuntimeState nextState) {
+        Objects.requireNonNull(nextState, "Next runtime state is required");
+        if (nextState == RuntimeState.NOT_STARTED || nextState == RuntimeState.RUNNING) {
+            throw new IllegalArgumentException("Runtime reconciliation requires an unavailable state.");
+        }
+        if (status != DeploymentStatus.SUCCEEDED || getRuntimeState() != RuntimeState.RUNNING) {
+            return false;
+        }
+        runtimeState = nextState;
+        return true;
     }
 
     public UUID getId() {
@@ -212,4 +234,15 @@ public class DeploymentEntity {
     public String getApplicationUrl() { return applicationUrl; }
 
     public String getServicePath() { return servicePath; }
+
+    public RuntimeState getRuntimeState() {
+        // Rows created before runtime-state tracking may have a null value.
+        // A successful legacy row is assumed RUNNING until startup reconciliation checks its process.
+        if (runtimeState == null) {
+            return status == DeploymentStatus.SUCCEEDED
+                    ? RuntimeState.RUNNING
+                    : RuntimeState.NOT_STARTED;
+        }
+        return runtimeState;
+    }
 }
