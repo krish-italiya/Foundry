@@ -385,3 +385,28 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - Runtime registry state is in memory. The API's `@PreDestroy` cleanup stops child processes; after API restart, persisted deployment records may say `SUCCEEDED` while the process is gone. The local host URL then correctly returns 404, but lifecycle reconciliation is a future task.
 - Run API `clean test` and frontend `npm run build`; fix any compile/test errors before merging.
 - Verify a live Express deployment receives a `.localhost:8080` URL and the browser can navigate paths and load assets through the router.
+
+
+## Entry: Runtime lifecycle reconciliation (2026-10-25)
+
+### Implemented on `feat/runtime-lifecycle-reconciliation`; local verification pending
+- Separated deployment status from runtime state. `SUCCEEDED` records that the initial health check passed; it does not guarantee the process remains alive later.
+- Added `RuntimeState`: `NOT_STARTED`, `RUNNING`, `STOPPED`, `CRASHED`, and `INTERRUPTED`.
+- Added process liveness inspection to the local runtime adapter.
+- Added a scheduled local monitor that checks persisted successful deployments, marks an exited process `CRASHED`, and marks a successful record with no process tracked after a Foundry restart `INTERRUPTED`.
+- Exposed runtime state through the deployment response and dashboard detail strip.
+- Added tests for the entity's runtime state transitions and monitor behavior. The branch still requires a clean Windows Maven test run and frontend production build.
+
+### Concepts and interview connections
+- **Deployment state vs. runtime state:** successful rollout is an event in time; it is not an ongoing health guarantee.
+- **Reconciliation loop:** repeatedly compare persisted metadata with observed process state and correct stale records.
+- **Crash detection:** a known child process that has exited is different from a process that isn't tracked after the control plane restarts.
+- **Interrupted runtime:** the app process registry is in memory, so a persisted `SUCCEEDED` record after a Foundry restart doesn't prove the app still exists.
+- **Idempotent reconciliation:** persist a runtime state transition once and avoid duplicating cleanup/log events on every poll.
+
+### Boundaries and next validation
+- This monitor detects process unavailability; it does not restart applications, perform retries, or provide sandboxing.
+- Run API `clean test` and frontend `npm run build` on Windows.
+- Deploy Express through local ingress, stop only its child process, and observe `CRASHED` plus 404 routing.
+- Restart Foundry and confirm a previously successful deployment with no active process becomes `INTERRUPTED`.
+- Public hosting remains out of scope until isolated execution and public TLS/DNS ingress are designed and validated.
