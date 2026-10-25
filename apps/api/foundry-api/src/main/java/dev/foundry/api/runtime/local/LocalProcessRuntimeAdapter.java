@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -50,6 +51,7 @@ public class LocalProcessRuntimeAdapter implements RepositoryArtifactRuntime {
 
     private final Path sampleJar;
     private final DeploymentLogService logService;
+    private final URI applicationBaseUrl;
     private final Map<UUID, Process> processes = new ConcurrentHashMap<>();
     private final Map<UUID, URI> applicationUrls = new ConcurrentHashMap<>();
     private final Map<UUID, String> healthPaths = new ConcurrentHashMap<>();
@@ -62,9 +64,19 @@ public class LocalProcessRuntimeAdapter implements RepositoryArtifactRuntime {
 
     public LocalProcessRuntimeAdapter(
             DeploymentLogService logService,
-            @Value("${foundry.runtime.local.sample-jar}") String sampleJarPath) {
+            @Value("${foundry.runtime.local.sample-jar}") String sampleJarPath,
+            @Value("${foundry.runtime.local.application-base-url:http://localhost:8080}") String applicationBaseUrl) {
         this.logService = logService;
         this.sampleJar = Path.of(sampleJarPath).toAbsolutePath().normalize();
+        this.applicationBaseUrl = LocalApplicationAddress.parseBaseUrl(applicationBaseUrl);
+    }
+
+    /**
+     * Returns the loopback target for routing requests to a currently running deployment.
+     * It is intentionally not the URL displayed to users.
+     */
+    public Optional<URI> internalApplicationUrl(UUID deploymentId) {
+        return Optional.ofNullable(applicationUrls.get(deploymentId));
     }
 
     @Override
@@ -172,8 +184,8 @@ public class LocalProcessRuntimeAdapter implements RepositoryArtifactRuntime {
             throw new IllegalStateException("A runtime process already exists for this deployment.");
         }
 
-        URI url = URI.create("http://127.0.0.1:" + port);
-        applicationUrls.put(deploymentId, url);
+        URI internalUrl = URI.create("http://127.0.0.1:" + port);
+        applicationUrls.put(deploymentId, internalUrl);
         healthPaths.put(deploymentId, healthPath == null || healthPath.isBlank() ? "/" : healthPath);
         healthMarkers.put(deploymentId, healthMarker == null ? "" : healthMarker);
         if (workspace != null) workspaces.put(deploymentId, workspace);
@@ -182,7 +194,7 @@ public class LocalProcessRuntimeAdapter implements RepositoryArtifactRuntime {
                 .start(() -> captureOutput(deploymentId, process.getInputStream(), DeploymentLogStream.STDOUT));
         Thread.ofVirtual().name("foundry-stderr-" + deploymentId)
                 .start(() -> captureOutput(deploymentId, process.getErrorStream(), DeploymentLogStream.STDERR));
-        return url;
+        return LocalApplicationAddress.applicationUrl(deploymentId, applicationBaseUrl);
     }
 
     @Override

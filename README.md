@@ -65,10 +65,11 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 - Persisted command stdout/stderr and exit-code log entries with per-command timeouts.
 - Launch of supported Java JARs or npm `preview`/`start` scripts, followed by a real health check.
 - Per-project build trust is explicitly opt-in in the dashboard, stored in the local database, and can be revoked. The administrator allowlist remains an optional local override.
+- A local ingress filter gives active deployments stable `http://{deployment-id}.localhost:8080` URLs and proxies requests to their private loopback ports. This is for local development, not public hosting.
 
 **Safe defaults:** `foundry.build.enabled=false`, `foundry.build.allowed-repositories=`, `foundry.worker.enabled=false`, `foundry.runtime.local.enabled=false`, and `foundry.runtime.local.sample-mode-enabled=false`. Enable these deliberately for a local demonstration. Registering a URL alone does not authorize running its scripts; trust it explicitly in the dashboard or use the local administrator allowlist.
 
-**Important boundary:** repository builds execute source-repository scripts on the local host. Project trust is an explicit local consent/authorization step, not a sandbox. Do not expose this runner publicly or execute untrusted repositories until isolated build/runtime workers, credentials boundaries, resource limits, authentication, and access controls exist. Application URLs are loopback-only.
+**Important boundary:** repository builds execute source-repository scripts on the local host. Project trust is an explicit local consent/authorization step, not a sandbox. Do not expose this runner publicly or execute untrusted repositories until isolated build/runtime workers, credential boundaries, resource limits, authentication, and access controls exist. The local ingress uses `.localhost` subdomains and forwards to processes bound to loopback; it is not Internet ingress. Process routing state is in memory, so restarting the API stops local workloads and their old URLs become unavailable.
 
 ## Build principles
 
