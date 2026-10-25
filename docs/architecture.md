@@ -1,6 +1,6 @@
 # Foundry Architecture — Repository-to-Deployment Pipeline
 
-Status: **local product prototype; repository builds, project-level trust, and local subdomain routing have been exercised locally. Runtime lifecycle reconciliation is being developed on `feat/runtime-lifecycle-reconciliation` and still needs local compilation and end-to-end verification.**
+Status: **local product prototype; repository builds, project-level trust, local subdomain routing, and runtime lifecycle reconciliation have been verified on Windows. The runtime monitor detects an exited application as `CRASHED` and a previously successful deployment no longer tracked after a Foundry API restart as `INTERRUPTED`.**
 
 ## Current path
 
@@ -108,9 +108,16 @@ The ingress is deliberately a local-development seam, not production ingress. Ru
 - **Production gaps:** no container sandbox, request/build resource limits, authenticated multi-tenancy, reliable queue recovery/retries, retention policy, public TLS/DNS ingress, automatic application restart, or durable runtime recovery yet.
 - **Frontend deployment is separate:** the dashboard currently uses a local Vite proxy. A hosted frontend/backend arrangement will need an API origin, CORS/auth configuration, and durable database setup.
 
+## Verified locally
+
+- Windows API Maven suite passed: **54 tests, 0 failures, 0 errors, 0 skipped**.
+- Frontend production build passed.
+- Deployed `render-examples/express-hello-world` from GitHub through checkout, npm install, process startup, and health check. The app rendered through its UUID `.localhost:8080` URL.
+- Stopping the verified `node app.js` process changed runtime state to `CRASHED` and recorded a runtime log.
+- Restarting the Foundry API changed a previously successful deployment with no process tracked by the new API process to `INTERRUPTED` and recorded the reconciliation log.
+
 ## Next checkpoints
 
-1. Pull `feat/runtime-lifecycle-reconciliation`; run API `clean test` and frontend `npm run build`.
-2. Deploy the Express test app through local ingress, terminate only its child process, and verify `runtimeState=CRASHED` and a 404 from the old route.
-3. Restart Foundry and confirm previously successful deployments with no tracked process become `INTERRUPTED`.
-4. Design isolated runtime workers and public DNS/TLS ingress only after local lifecycle reconciliation is verified.
+1. Merge the reviewed lifecycle-reconciliation change and synchronize the local branch.
+2. Continue hardening local runtime behavior and cleanup, including stale URL/route checks after a process exits.
+3. Design isolated runtime workers, resource limits, and public DNS/TLS ingress before attempting public hosting.
