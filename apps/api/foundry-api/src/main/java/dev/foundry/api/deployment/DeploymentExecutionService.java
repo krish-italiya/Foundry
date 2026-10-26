@@ -56,6 +56,12 @@ public class DeploymentExecutionService {
     }
 
     @Transactional
+    public Optional<Boolean> tryMarkRuntimeState(UUID deploymentId, RuntimeState runtimeState) {
+        return deploymentRepository.findByIdForUpdate(deploymentId)
+                .map(deployment -> deployment.markRuntimeState(runtimeState));
+    }
+
+    @Transactional
     public void markFailed(
             UUID deploymentId,
             String reason) {
