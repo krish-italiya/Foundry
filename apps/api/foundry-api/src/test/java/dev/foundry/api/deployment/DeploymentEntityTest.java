@@ -64,6 +64,19 @@ class DeploymentEntityTest {
     }
 
     @Test
+    void runtimeCanTransitionFromRunningToStopped() {
+        DeploymentEntity deployment = newDeployment();
+        deployment.transitionTo(DeploymentStatus.BUILDING);
+        deployment.transitionTo(DeploymentStatus.STARTING);
+        deployment.transitionTo(DeploymentStatus.HEALTH_CHECK);
+        deployment.markHealthCheckPassed();
+
+        assertTrue(deployment.markRuntimeState(RuntimeState.STOPPED));
+        assertEquals(RuntimeState.STOPPED, deployment.getRuntimeState());
+        assertFalse(deployment.markRuntimeState(RuntimeState.CRASHED));
+    }
+
+    @Test
     void runtimeCannotBeMarkedUnavailableBeforeDeploymentSucceeds() {
         DeploymentEntity deployment = newDeployment();
 
