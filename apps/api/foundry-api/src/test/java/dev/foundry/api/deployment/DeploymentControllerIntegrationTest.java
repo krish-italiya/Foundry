@@ -250,6 +250,47 @@ class DeploymentControllerIntegrationTest {
     }
 
     @Test
+    void stopUnknownDeploymentShouldReturnNotFound() throws Exception {
+        mockMvc.perform(post(
+                        API_URL + "/deployments/{deploymentId}/stop",
+                        UUID.randomUUID()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void stopQueuedDeploymentShouldReturnConflict() throws Exception {
+        ProjectEntity project = createProject();
+        DeploymentEntity deployment = deploymentRepository.save(
+                new DeploymentEntity(project, "main"));
+
+        mockMvc.perform(post(
+                        API_URL + "/deployments/{deploymentId}/stop",
+                        deployment.getId()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message")
+                        .value("Only a succeeded deployment with runtime state RUNNING can be stopped."));
+    }
+
+    @Test
+    void stopRunningDeploymentWhenLocalRuntimeIsDisabledShouldReturnServiceUnavailable()
+            throws Exception {
+        ProjectEntity project = createProject();
+        DeploymentEntity deployment = new DeploymentEntity(project, "main");
+        deployment.transitionTo(DeploymentStatus.BUILDING);
+        deployment.transitionTo(DeploymentStatus.STARTING);
+        deployment.transitionTo(DeploymentStatus.HEALTH_CHECK);
+        deployment.markHealthCheckPassed("http://00000000-0000-0000-0000-000000000001.localhost:8080");
+        deployment = deploymentRepository.save(deployment);
+
+        mockMvc.perform(post(
+                        API_URL + "/deployments/{deploymentId}/stop",
+                        deployment.getId()))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.message")
+                        .value("The local runtime is disabled or unavailable; Foundry cannot stop this application."));
+    }
+
+    @Test
     void invalidLogCursorOrPageSizeShouldBeRejected() throws Exception {
         ProjectEntity project = createProject();
 
