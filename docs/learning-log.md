@@ -413,3 +413,26 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - This monitor detects process unavailability; it does not restart applications, perform retries, or provide sandboxing.
 - The tested `.localhost` URL is local preview only, not public Internet hosting.
 - Public hosting remains out of scope until execution isolation, resource limits, access controls, and public TLS/DNS ingress are designed and validated.
+
+
+
+## Entry: Explicit stop control for local deployments (2026-10-26)
+
+### Implemented on `feat/stop-local-deployment`; local verification pending
+- Added `POST /api/v1/deployments/{deploymentId}/stop` for a developer-requested stop of a deployment whose overall status is `SUCCEEDED` and runtime state is `RUNNING`.
+- The API has explicit outcomes: stopped (200), unknown deployment (404), not currently running (409), and local runtime unavailable (503).
+- A successful stop changes runtime state to `STOPPED`, calls the local runtime adapter to remove routing/process mappings and attempt process/workspace cleanup, and appends a runtime log. Cleanup/log exceptions are recorded without converting the original deployment result from `SUCCEEDED`.
+- Added a dashboard Stop app button with a confirmation prompt; the control is only shown for running successful deployments.
+- Added focused service tests and controller integration tests for the expected result paths. Run the full Windows API suite and frontend build before merging.
+
+### Concepts and interview connections
+- **Explicit lifecycle command:** stopping a deployment is a stateful operation, not the same as deleting its historical deployment record.
+- **Idempotency/concurrency guard:** a locked state transition ensures only one concurrent stop request can change `RUNNING` to `STOPPED`.
+- **HTTP outcome semantics:** `404` means the deployment does not exist, `409` means its current state doesn't permit stop, and `503` means the local runtime capability is unavailable.
+- **Best-effort cleanup:** the runtime state and route are made unavailable; process/workspace cleanup is attempted, with diagnostics kept if cleanup encounters an exception.
+- **Separate rollout and runtime status:** a deployment can remain `SUCCEEDED` while runtime state becomes `STOPPED`, `CRASHED`, or `INTERRUPTED`.
+
+### Boundaries and next validation
+- This stop endpoint is for the local trusted runtime only. It is not a public multi-user stop API or a sandbox boundary.
+- Verify the stop action locally with a real deployment, ensure the application URL stops serving traffic while Foundry remains running, and confirm repeated stop requests return a conflict.
+- Public hosting still requires isolated execution, resource limits, authentication/authorization, and public TLS/DNS ingress.
