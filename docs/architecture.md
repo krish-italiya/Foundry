@@ -54,6 +54,7 @@ This pipeline must stay disabled by default. A trusted-repository allowlist limi
 - `POST /api/v1/projects/{projectId}/deployments`
 - `GET /api/v1/projects/{projectId}/deployments`
 - `GET /api/v1/deployments/{deploymentId}`
+- `POST /api/v1/deployments/{deploymentId}/stop` to stop a currently running local application
 - `GET /api/v1/deployments/{deploymentId}/logs?afterSequence=0&limit=50`
 
 A deployment request stores a repository URL, source ref, and optional relative service path. Its state advances `QUEUED → BUILDING → STARTING → HEALTH_CHECK → SUCCEEDED`, with failure paths from nonterminal states. Log entries have a per-deployment sequence number and are returned using bounded cursor pagination.
@@ -93,7 +94,7 @@ For a local demonstration, enable the worker, runtime, and build flag. Register 
 
 The runtime binds the application process to `127.0.0.1` on an ephemeral port. The local ingress returns `http://{deployment-id}.localhost:8080` and proxies requests for that UUID host to the registered active process. This preserves paths, query strings, request headers, and request bodies for a useful local preview. Requests for unknown or stopped deployment hosts return 404. The `.localhost` URL resolves to loopback; it is reachable only from the same machine, not from the public Internet.
 
-The deployment's initial `SUCCEEDED` status means its first health check passed; it is not an ongoing health guarantee. The local runtime monitor records a separate `runtimeState`: `RUNNING`, `CRASHED`, or `INTERRUPTED`. A process that exits while Foundry is running is marked `CRASHED`; a previously successful deployment with no process tracked after a Foundry restart is marked `INTERRUPTED`. Monitoring is detection-only and does not restart processes.
+The deployment's initial `SUCCEEDED` status means its first health check passed; it is not an ongoing health guarantee. The local runtime monitor records a separate `runtimeState`: `RUNNING`, `STOPPED`, `CRASHED`, or `INTERRUPTED`. A process that exits while Foundry is running is marked `CRASHED`; a previously successful deployment with no process tracked after a Foundry restart is marked `INTERRUPTED`. A developer can request a stop for a currently `RUNNING` local deployment; Foundry marks it `STOPPED`, removes its route/process mapping, attempts process cleanup, and appends a runtime log. Monitoring remains detection-only and does not restart processes.
 
 The ingress is deliberately a local-development seam, not production ingress. Runtime-to-deployment mappings are in memory and are removed when the process stops; API restart terminates workloads rather than recovering them. Request size/rate limits, durable process recovery, public TLS/DNS, authentication, and isolation still need design before hosting arbitrary projects on the Internet.
 
@@ -118,6 +119,6 @@ The ingress is deliberately a local-development seam, not production ingress. Ru
 
 ## Next checkpoints
 
-1. Merge the reviewed lifecycle-reconciliation change and synchronize the local branch.
-2. Continue hardening local runtime behavior and cleanup, including stale URL/route checks after a process exits.
+1. Run API `clean test` and the frontend production build on Windows for the explicit stop action.
+2. Verify the dashboard Stop app control transitions a live trusted deployment to `STOPPED`, emits a runtime log, and removes its route.
 3. Design isolated runtime workers, resource limits, and public DNS/TLS ingress before attempting public hosting.
