@@ -11,7 +11,9 @@ import dev.foundry.api.deployment.log.DeploymentLogStage;
 import dev.foundry.api.deployment.log.DeploymentLogStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import dev.foundry.api.runtime.AnyRuntimeEnabledCondition;
+import dev.foundry.api.runtime.ManagedRepositoryArtifactRuntime;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -26,23 +28,20 @@ import java.util.UUID;
  * process registry. It detects unavailable processes; it does not restart them.
  */
 @Component
-@ConditionalOnProperty(
-        prefix = "foundry.runtime.local",
-        name = "enabled",
-        havingValue = "true")
+@Conditional(AnyRuntimeEnabledCondition.class)
 public class LocalRuntimeLifecycleMonitor {
 
     private static final Logger log = LoggerFactory.getLogger(LocalRuntimeLifecycleMonitor.class);
 
     private final DeploymentRepository deploymentRepository;
     private final DeploymentExecutionService executionService;
-    private final LocalProcessRuntimeAdapter runtime;
+    private final ManagedRepositoryArtifactRuntime runtime;
     private final DeploymentLogService deploymentLogService;
 
     public LocalRuntimeLifecycleMonitor(
             DeploymentRepository deploymentRepository,
             DeploymentExecutionService executionService,
-            LocalProcessRuntimeAdapter runtime,
+            ManagedRepositoryArtifactRuntime runtime,
             DeploymentLogService deploymentLogService) {
         this.deploymentRepository = deploymentRepository;
         this.executionService = executionService;

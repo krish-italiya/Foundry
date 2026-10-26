@@ -1,6 +1,7 @@
 package dev.foundry.api.runtime.local;
 
 import com.sun.net.httpserver.HttpServer;
+import dev.foundry.api.runtime.ManagedRepositoryArtifactRuntime;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -44,7 +45,7 @@ class LocalApplicationRouterFilterTest {
         upstream.start();
 
         try {
-            LocalProcessRuntimeAdapter runtime = mock(LocalProcessRuntimeAdapter.class);
+            ManagedRepositoryArtifactRuntime runtime = mock(ManagedRepositoryArtifactRuntime.class);
             when(runtime.internalApplicationUrl(deploymentId)).thenReturn(Optional.of(
                     URI.create("http://127.0.0.1:" + upstream.getAddress().getPort())));
             LocalApplicationRouterFilter filter = new LocalApplicationRouterFilter(runtime);

@@ -1,6 +1,6 @@
 # Foundry Architecture — Repository-to-Deployment Pipeline
 
-Status: **local product prototype; repository builds, project-level trust, local subdomain routing, and runtime lifecycle reconciliation have been verified on Windows. The runtime monitor detects an exited application as `CRASHED` and a previously successful deployment no longer tracked after a Foundry API restart as `INTERRUPTED`.**
+Status: **the `main` branch has a verified local-process prototype. The Docker runtime implementation is being developed on `feat/docker-runtime-adapter` and has not yet been locally compiled or exercised against Docker Desktop. Keep local-process mode as the default until the feature branch passes Windows verification.**
 
 ## Current path
 
@@ -29,11 +29,15 @@ RepositoryBuildService (opt-in)
 BuiltArtifact
             |
             v
-LocalProcessRuntimeAdapter
+Runtime adapter (explicitly selected)
             |
-            +---- executable Spring Boot JAR OR npm preview/start
-            +---- private 127.0.0.1:ephemeral-port process
-            +---- HTTP health check against the private target
+            +---- LocalProcessRuntimeAdapter (existing local mode)
+            |
+            +---- DockerRuntimeAdapter (opt-in feature branch)
+                    generated fixed Dockerfile -> image -> limited container per deployment
+                    non-root Java/Node images where supported, loopback-only port publishing
+            |
+            +---- HTTP health check against the private loopback target
             |
             +---- local ingress filter:
                    {deployment-id}.localhost:8080
@@ -91,11 +95,11 @@ foundry.build.command-timeout-seconds=600
 
 For a local demonstration, enable the worker, runtime, and build flag. Register the repository and explicitly enable its `Build trust` setting in the dashboard; this trust state is stored in a local file-backed H2 database and can be revoked. The exact HTTPS `foundry.build.allowed-repositories` setting remains an optional administrator override. Tests use an isolated in-memory H2 database. Keep sample-only mode disabled when testing real repository builds so a deployment cannot succeed by launching an unrelated prebuilt JAR.
 
-The runtime binds the application process to `127.0.0.1` on an ephemeral port. The local ingress returns `http://{deployment-id}.localhost:8080` and proxies requests for that UUID host to the registered active process. This preserves paths, query strings, request headers, and request bodies for a useful local preview. Requests for unknown or stopped deployment hosts return 404. The `.localhost` URL resolves to loopback; it is reachable only from the same machine, not from the public Internet.
+The local-process runtime binds the app process to `127.0.0.1` on an ephemeral port. The opt-in Docker runtime binds host-published ports to `127.0.0.1` and maps them to container port 8080. The local ingress returns `http://{deployment-id}.localhost:8080` and proxies requests for that UUID host to the registered active process. This preserves paths, query strings, request headers, and request bodies for a useful local preview. Requests for unknown or stopped deployment hosts return 404. The `.localhost` URL resolves to loopback; it is reachable only from the same machine, not from the public Internet.
 
 The deployment's initial `SUCCEEDED` status means its first health check passed; it is not an ongoing health guarantee. The local runtime monitor records a separate `runtimeState`: `RUNNING`, `CRASHED`, or `INTERRUPTED`. A process that exits while Foundry is running is marked `CRASHED`; a previously successful deployment with no process tracked after a Foundry restart is marked `INTERRUPTED`. Monitoring is detection-only and does not restart processes.
 
-The ingress is deliberately a local-development seam, not production ingress. Runtime-to-deployment mappings are in memory and are removed when the process stops; API restart terminates workloads rather than recovering them. Request size/rate limits, durable process recovery, public TLS/DNS, authentication, and isolation still need design before hosting arbitrary projects on the Internet.
+The ingress is deliberately a local-development seam, not production ingress. Runtime-to-deployment mappings are in memory; after an API restart, reconciliation marks persisted successes as `INTERRUPTED` and attempts to remove Docker containers with Foundry's deterministic deployment name. Request size/rate limits, durable process recovery, public TLS/DNS, authentication, and isolation still need design before hosting arbitrary projects on the Internet.
 
 ## System-design lessons and remaining boundaries
 
@@ -105,7 +109,7 @@ The ingress is deliberately a local-development seam, not production ingress. Ru
 - **Repository selection is not trust:** registration records the source; project build trust is a separate, explicit consent gate. The administrator allowlist can override project trust for local development, but neither is a sandbox.
 - **Do not pass user-controlled commands through shell-string concatenation.** Use fixed build strategies and validated repository/ref/service-path values.
 - **Secrets are not implemented:** private-repository credentials, log redaction, and credential isolation must be designed before hosted use.
-- **Production gaps:** no container sandbox, request/build resource limits, authenticated multi-tenancy, reliable queue recovery/retries, retention policy, public TLS/DNS ingress, automatic application restart, or durable runtime recovery yet.
+- **Production gaps:** Docker CPU/memory limits and non-root execution are defense-in-depth, not a complete sandbox for hostile code. An isolated build worker, credential isolation, authenticated multi-tenancy, build/request quotas, reliable queue recovery/retries, retention policy, public TLS/DNS ingress, and durable runtime recovery remain future work.
 - **Frontend deployment is separate:** the dashboard currently uses a local Vite proxy. A hosted frontend/backend arrangement will need an API origin, CORS/auth configuration, and durable database setup.
 
 ## Verified locally
@@ -116,8 +120,9 @@ The ingress is deliberately a local-development seam, not production ingress. Ru
 - Stopping the verified `node app.js` process changed runtime state to `CRASHED` and recorded a runtime log.
 - Restarting the Foundry API changed a previously successful deployment with no process tracked by the new API process to `INTERRUPTED` and recorded the reconciliation log.
 
-## Next checkpoints
+## Docker runtime feature-branch checkpoints
 
-1. Merge the reviewed lifecycle-reconciliation change and synchronize the local branch.
-2. Continue hardening local runtime behavior and cleanup, including stale URL/route checks after a process exits.
-3. Design isolated runtime workers, resource limits, and public DNS/TLS ingress before attempting public hosting.
+1. Compile the feature branch and run API tests plus the frontend production build on Windows.
+2. With Docker Desktop running, deploy the trusted Express example through checkout, build, image creation, container start, health check, and local URL routing.
+3. Confirm logs stream, crashes reconcile, cleanup removes containers, and API restart marks previous successes `INTERRUPTED` and removes stale deterministic container names.
+4. Design a separately isolated build worker before any public repository execution. Docker alone is not a complete hostile-code sandbox.

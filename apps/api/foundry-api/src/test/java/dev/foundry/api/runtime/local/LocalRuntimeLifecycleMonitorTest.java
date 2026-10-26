@@ -9,6 +9,7 @@ import dev.foundry.api.deployment.log.DeploymentLogService;
 import dev.foundry.api.deployment.log.DeploymentLogSeverity;
 import dev.foundry.api.deployment.log.DeploymentLogStage;
 import dev.foundry.api.deployment.log.DeploymentLogStream;
+import dev.foundry.api.runtime.ManagedRepositoryArtifactRuntime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +23,7 @@ class LocalRuntimeLifecycleMonitorTest {
 
     private final DeploymentRepository repository = mock(DeploymentRepository.class);
     private final DeploymentExecutionService executionService = mock(DeploymentExecutionService.class);
-    private final LocalProcessRuntimeAdapter runtime = mock(LocalProcessRuntimeAdapter.class);
+    private final ManagedRepositoryArtifactRuntime runtime = mock(ManagedRepositoryArtifactRuntime.class);
     private final DeploymentLogService logService = mock(DeploymentLogService.class);
 
     private final LocalRuntimeLifecycleMonitor monitor = new LocalRuntimeLifecycleMonitor(

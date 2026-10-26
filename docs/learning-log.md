@@ -413,3 +413,20 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - This monitor detects process unavailability; it does not restart applications, perform retries, or provide sandboxing.
 - The tested `.localhost` URL is local preview only, not public Internet hosting.
 - Public hosting remains out of scope until execution isolation, resource limits, access controls, and public TLS/DNS ingress are designed and validated.
+
+
+## Entry: Docker-backed runtime vertical slice (2026-10-27)
+
+### Feature branch: `feat/docker-runtime-adapter`
+- Added a separate opt-in `DockerRuntimeAdapter`; the current local-process adapter remains available behind its existing property.
+- The Docker adapter packages supported artifacts using generated, fixed Dockerfiles rather than interpolating repository scripts into shell command strings.
+- Node services are copied without `.git`, `node_modules`, common build directories, `.env*`, or `.npmrc`; dependencies install inside the image and use `npm ci` when a lockfile exists.
+- Java images use a non-root numeric user; Node uses the image's `node` user; static Vite output uses unprivileged Nginx.
+- Each container gets a deterministic Foundry name, port 8080 inside the container, loopback-only host publishing, CPU/memory/PID limits, dropped Linux capabilities, no-new-privileges, and a bounded temporary filesystem.
+- Docker CLI arguments are passed as individual `ProcessBuilder` arguments. Image build output and container logs flow into the existing deployment log stream.
+- Local ingress and runtime reconciliation now use a common managed-runtime interface to support either local-process or Docker mode.
+- Docker execution remains disabled by default; do not enable local and Docker runtime flags together.
+
+### Important boundary
+- This feature branch has not yet been compiled or exercised against Docker Desktop; run API tests, frontend production build, and a live Windows Docker deployment before merge.
+- Docker restrictions provide defense-in-depth, not a complete sandbox for hostile repositories. Do not expose public deployments without a separately isolated build/execution boundary, credential policy, authentication, quotas, and public TLS/DNS.

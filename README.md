@@ -4,7 +4,7 @@
 
 Foundry is an educational, production-inspired Internal Developer Platform (IDP). Its purpose is to hide repetitive deployment work behind a consistent developer workflow while keeping the underlying infrastructure understandable and controllable.
 
-The project is **not tied to a single cloud provider**. The first deployment target will be a controlled Docker runtime. Cloud Run, Kubernetes, and other runtimes can be added later behind provider-specific adapters.
+The project is **not tied to a single cloud provider**. The intended first isolated runtime is Docker; Cloud Run, Kubernetes, and other runtimes can be added later behind provider-specific adapters.
 
 ## The intended developer experience
 
@@ -54,7 +54,8 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 - Project registration/list/retrieval and deployment create/list/retrieval APIs.
 - Guarded deployment lifecycle with persisted timestamps, failure reason, optional service path, and application URL.
 - Cursor-paginated deployment logs with ordered sequence numbers, bounded messages, and captured stdout/stderr.
-- An opt-in worker and local runtime adapter for a trusted prebuilt sample JAR.
+- An opt-in worker and local-process runtime adapter for trusted local development.
+- An opt-in Docker runtime adapter on `feat/docker-runtime-adapter`, with generated fixed Dockerfiles, loopback-only host port publishing, CPU/memory/PID limits, dropped Linux capabilities, non-root Java/Node images, health checks, container logs, and cleanup. This branch implementation requires local Docker/Windows verification before merge.
 - React + TypeScript + Vite dashboard in `apps/web` for project registration, deployment requests/history, log viewing, and application URLs.
 
 **Repository build pipeline (tested locally; current onboarding changes are on `feat/npm-lockfile-fallback` and still need a fresh verification run):**
@@ -68,9 +69,9 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 - A local ingress filter gives active deployments stable `http://{deployment-id}.localhost:8080` URLs and proxies requests to their private loopback ports. This is for local development, not public hosting.
 - Runtime state is tracked separately from the initial deployment result. A local monitor identifies exited applications as `CRASHED` and successful records whose process is no longer tracked after a Foundry restart as `INTERRUPTED`. It detects failures but does not restart workloads.
 
-**Safe defaults:** `foundry.build.enabled=false`, `foundry.build.allowed-repositories=`, `foundry.worker.enabled=false`, `foundry.runtime.local.enabled=false`, and `foundry.runtime.local.sample-mode-enabled=false`. Enable these deliberately for a local demonstration. Registering a URL alone does not authorize running its scripts; trust it explicitly in the dashboard or use the local administrator allowlist.
+**Safe defaults:** `foundry.build.enabled=false`, `foundry.build.allowed-repositories=`, `foundry.worker.enabled=false`, `foundry.runtime.local.enabled=false`, `foundry.runtime.docker.enabled=false`, and `foundry.runtime.local.sample-mode-enabled=false`. Enable these deliberately for a local demonstration. Registering a URL alone does not authorize running its scripts; trust it explicitly in the dashboard or use the local administrator allowlist.
 
-**Important boundary:** repository builds execute source-repository scripts on the local host. Project trust is an explicit local consent/authorization step, not a sandbox. Do not expose this runner publicly or execute untrusted repositories until isolated build/runtime workers, credential boundaries, resource limits, authentication, and access controls exist. The local ingress uses `.localhost` subdomains and forwards to processes bound to loopback; it is not Internet ingress. Process routing state is in memory, so restarting the API stops local workloads and their old URLs become unavailable.
+**Important boundary:** repository builds execute source-repository scripts on the local host. Project trust is an explicit local consent/authorization step, not a sandbox. Do not expose this runner publicly or execute untrusted repositories until isolated build/runtime workers, credential boundaries, resource limits, authentication, and access controls exist. The local ingress uses `.localhost` subdomains and forwards to loopback-published local processes/containers; it is not Internet ingress. Process routing state is in memory, so restarting the API stops local workloads and their old URLs become unavailable.
 
 ## Build principles
 
