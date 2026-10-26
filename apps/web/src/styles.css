@@ -205,6 +205,10 @@ h1 span { color: #7259dd; }
 
 .log-panel { margin-top: 18px; }
 .log-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding: 22px 23px 18px; }
+.deployment-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.button-danger-quiet { color: #b23a45; background: #fff; border-color: #efd2d6; }
+.button-danger-quiet:hover:not(:disabled) { background: #fff4f5; border-color: #e5b8bf; }
+.button:disabled { opacity: .58; cursor: not-allowed; }
 .deployment-detail-strip { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1.4fr; gap: 0; padding: 13px 22px; background: #fafbfe; border-top: 1px solid #eff2f6; border-bottom: 1px solid #eff2f6; }
 .runtime-state-item strong { text-transform: capitalize; }
 .runtime-state-running strong { color: #16845f; }
