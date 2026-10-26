@@ -141,6 +141,7 @@ function App() {
   const [servicePath, setServicePath] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
   const [creatingDeployment, setCreatingDeployment] = useState(false);
+  const [stoppingRuntimeId, setStoppingRuntimeId] = useState("");
   const [pageError, setPageError] = useState("");
   const [notice, setNotice] = useState("");
   const lastLogSequence = useRef(0);
@@ -366,6 +367,34 @@ function App() {
       setPageError(error instanceof Error ? error.message : "Could not request deployment.");
     } finally {
       setCreatingDeployment(false);
+    }
+  }
+
+  async function handleStopRuntime() {
+    if (!selectedDeployment || stoppingRuntimeId) return;
+    const deploymentId = selectedDeployment.id;
+    if (!window.confirm(
+      "Stop this application runtime? Its local preview URL will stop working. You can deploy it again later."
+    )) {
+      return;
+    }
+
+    setPageError("");
+    setNotice("");
+    setStoppingRuntimeId(deploymentId);
+    try {
+      const stopped = await api<Deployment>(
+        "/api/v1/deployments/" + encodeURIComponent(deploymentId) + "/stop",
+        { method: "POST" }
+      );
+      setDeployments((current) =>
+        current.map((deployment) => deployment.id === stopped.id ? stopped : deployment)
+      );
+      setNotice("Application runtime stopped.");
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Could not stop the application runtime.");
+    } finally {
+      setStoppingRuntimeId("");
     }
   }
 
@@ -648,7 +677,21 @@ function App() {
                 <h2>{selectedDeployment ? "Deployment details" : "Runtime logs"} <span className="heading-count">{logs.length}</span></h2>
                 <p>{selectedDeployment ? "Release #" + shortId(selectedDeployment.id) + " · " + selectedDeployment.sourceRepositoryUrl : "Select a deployment above to inspect status and logs."}</p>
               </div>
-              {selectedDeployment && <StatusBadge status={selectedDeployment.status} />}
+              {selectedDeployment && (
+                <div className="deployment-heading-actions">
+                  {selectedDeployment.status === "SUCCEEDED" && selectedDeployment.runtimeState === "RUNNING" && (
+                    <button
+                      type="button"
+                      className="button button-danger-quiet button-small"
+                      onClick={() => void handleStopRuntime()}
+                      disabled={stoppingRuntimeId !== ""}
+                    >
+                      {stoppingRuntimeId === selectedDeployment.id ? "Stopping…" : "Stop app"}
+                    </button>
+                  )}
+                  <StatusBadge status={selectedDeployment.status} />
+                </div>
+              )}
             </div>
 
             {selectedDeployment && (
