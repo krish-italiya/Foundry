@@ -1,6 +1,5 @@
 import type { Deployment, Project } from "../types/workspace";
-import { shortId, timeLabel } from "../utils/format";
-import StatusBadge from "../components/StatusBadge";
+import { timeLabel } from "../utils/format";
 import DeploymentList from "../components/DeploymentList";
 
 interface ProjectOverviewTabProps {
