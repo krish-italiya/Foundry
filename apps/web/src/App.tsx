@@ -140,6 +140,7 @@ function App() {
   const [notice, setNotice] = useState("");
   const [deploymentQuery, setDeploymentQuery] = useState("");
   const [deploymentStatusFilter, setDeploymentStatusFilter] = useState("ALL");
+  const [deploymentPage, setDeploymentPage] = useState(1);
   const lastLogSequence = useRef(0);
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
@@ -156,6 +157,9 @@ function App() {
       || deployment.status.toLowerCase().includes(query);
     return matchesQuery && (deploymentStatusFilter === "ALL" || deployment.status === deploymentStatusFilter);
   });
+  const pageSize = 8;
+  const deploymentPageCount = Math.max(1, Math.ceil(filteredDeployments.length / pageSize));
+  const visibleDeployments = filteredDeployments.slice((deploymentPage - 1) * pageSize, deploymentPage * pageSize);
   const viewLabels: Record<WorkspaceView, { title: string; eyebrow: string; subtitle: string }> = {
     overview: { title: "Overview", eyebrow: "WORKSPACE / OVERVIEW", subtitle: "Your projects, releases, and runtime health at a glance." },
     projects: { title: "Projects", eyebrow: "WORKSPACE / PROJECTS", subtitle: "Connect repositories and manage which code Foundry is allowed to build." },
@@ -223,6 +227,14 @@ function App() {
       window.clearInterval(interval);
     };
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    setDeploymentPage(1);
+  }, [selectedProjectId, deploymentQuery, deploymentStatusFilter]);
+
+  useEffect(() => {
+    if (deploymentPage > deploymentPageCount) setDeploymentPage(deploymentPageCount);
+  }, [deploymentPage, deploymentPageCount]);
 
   useEffect(() => {
     let cancelled = false;
@@ -434,6 +446,13 @@ function App() {
             {activeView === "deployments" && <button className="button button-primary header-action" onClick={() => document.getElementById("deployment-create-form")?.scrollIntoView({ behavior: "smooth", block: "center" })}>＋ New deployment</button>}
           </div>
         </header>
+
+        <nav className="mobile-nav" aria-label="Workspace navigation">
+          <button className={activeView === "overview" ? "active" : ""} onClick={() => navigate("overview")}><span>◫</span>Overview</button>
+          <button className={activeView === "projects" ? "active" : ""} onClick={() => navigate("projects")}><span>◇</span>Projects</button>
+          <button className={activeView === "deployments" ? "active" : ""} onClick={() => navigate("deployments")}><span>↗</span>Deployments</button>
+          <button className={activeView === "build-runtime" ? "active" : ""} onClick={() => navigate("build-runtime")}><span>⌁</span>Build &amp; Runtime</button>
+        </nav>
 
         <div className="page-content">
           {pageError && (
@@ -647,6 +666,16 @@ function App() {
                     </button>
                   ))}
                 </div>
+                {filteredDeployments.length > pageSize && (
+                  <div className="pagination-bar">
+                    <span>Showing {(deploymentPage - 1) * pageSize + 1}–{Math.min(deploymentPage * pageSize, filteredDeployments.length)} of {filteredDeployments.length} releases</span>
+                    <div className="pagination-actions">
+                      <button className="button button-quiet" onClick={() => setDeploymentPage((page) => Math.max(1, page - 1))} disabled={deploymentPage === 1}>← Previous</button>
+                      <span className="page-indicator">{deploymentPage} / {deploymentPageCount}</span>
+                      <button className="button button-quiet" onClick={() => setDeploymentPage((page) => Math.min(deploymentPageCount, page + 1))} disabled={deploymentPage === deploymentPageCount}>Next →</button>
+                    </div>
+                  </div>
+                )}
                 <div className="card-footer"><span className="mini-live-dot" /> Auto-refresh every 5 seconds <span className="bottom-spacer" /><span className="muted-small">{filteredDeployments.length} of {deployments.length} shown</span></div>
               </section>
             </>
