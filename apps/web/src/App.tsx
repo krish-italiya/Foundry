@@ -17,8 +17,7 @@ export default function App() {
   function navigate(view: WorkspaceView) {
     setActiveView(view);
     workspace.clearFeedback();
-    if (view !== "projects") setProjectFormOpen(false);
-    if (view === "projects") setProjectFormOpen(false);
+    setProjectFormOpen(false);
     if (view === "overview") setProjectTab("overview");
   }
 
