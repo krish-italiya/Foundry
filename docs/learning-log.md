@@ -462,3 +462,9 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - The complete backend Maven test suite passed: 59 tests, 0 failures, 0 errors, 0 skipped.
 - These results validate type/build compatibility and existing backend regressions, but do not replace manual UI interaction testing. Still to smoke-test: entering a project workspace, switching project tabs, deploying from that project's Deployments tab, selecting a release to open Build & Runtime, search/status filtering and pagination, and changing projects without leaking the previous project's logs/deployments into the new selection.
 - Docker lifecycle cleanup and API restart reconciliation also remain acceptance checks before merging PR #13.
+
+
+### Final Overview navigation build (2026-10-28)
+- Pulled current branch head `118d6fc9732553645d6ee69fbf4882bc0ada4965`; `npm run build` passed with `tsc --noEmit` and Vite transforming 48 modules (CSS 45.09 kB, JS 267.84 kB before gzip).
+- This last commit only changes frontend overview/navigation wiring and related documentation. The backend suite had passed 59/59 immediately before it; no backend source changed in this final commit.
+- Remaining: manual UI smoke test of project-scoped navigation and Docker lifecycle cleanup/restart behavior before PR #13 is merge-ready.
