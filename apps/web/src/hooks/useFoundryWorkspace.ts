@@ -93,6 +93,11 @@ export function useFoundryWorkspace() {
       return;
     }
 
+    // A project workspace must never briefly display another project's releases.
+    setDeployments([]);
+    setSelectedDeploymentId("");
+    setLoadingDeployments(true);
+
     const load = async () => {
       try {
         setLoadingDeployments(true);
