@@ -455,3 +455,10 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - State/ownership principle: `App.tsx` coordinates top-level navigation and connects the workspace hook to page components, while project tabs own view-specific UI state such as filters and pagination.
 - Correctness detail: changing the selected project clears the previous project's deployments and selected release before loading the new project data, avoiding a misleading cross-project display.
 - Verification status at commit time: source files and import references were reviewed through the GitHub connector, but the new composition has **not yet been run through a local TypeScript/Vite production build**. That is the immediate acceptance gate before treating this refactor as complete.
+
+
+### Modular dashboard automated verification (2026-10-28)
+- The latest project-scoped dashboard refactor passed the frontend production build (`tsc --noEmit && vite build`) on Windows.
+- The complete backend Maven test suite passed: 59 tests, 0 failures, 0 errors, 0 skipped.
+- These results validate type/build compatibility and existing backend regressions, but do not replace manual UI interaction testing. Still to smoke-test: entering a project workspace, switching project tabs, deploying from that project's Deployments tab, selecting a release to open Build & Runtime, search/status filtering and pagination, and changing projects without leaking the previous project's logs/deployments into the new selection.
+- Docker lifecycle cleanup and API restart reconciliation also remain acceptance checks before merging PR #13.
