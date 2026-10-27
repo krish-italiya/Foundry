@@ -52,7 +52,8 @@ export default function ProjectDeploymentsTab({
     return matchesText && (status === "ALL" || deployment.status === status);
   });
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const currentPage = Math.min(page, pageCount);
+  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   function changeQuery(value: string) {
     setQuery(value);
@@ -83,7 +84,7 @@ export default function ProjectDeploymentsTab({
           <label className="filter-select"><span>STATUS</span><select value={status} onChange={(event) => changeStatus(event.target.value as "ALL" | DeploymentStatus)}>{statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         </div>
         <DeploymentList deployments={visible} selectedDeploymentId={selectedDeploymentId} loading={loadingDeployments} emptyTitle="No matching releases" emptyDescription="Change the search or status filter, or start a new deployment." onSelect={onOpenDeployment} />
-        {filtered.length > pageSize && <div className="pagination-bar"><span>Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} of {filtered.length} releases</span><div className="pagination-actions"><button className="button button-quiet" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} type="button">← Previous</button><span className="page-indicator">{page} / {pageCount}</span><button className="button button-quiet" onClick={() => setPage((current) => Math.min(pageCount, current + 1))} disabled={page === pageCount} type="button">Next →</button></div></div>}
+        {filtered.length > pageSize && <div className="pagination-bar"><span>Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} releases</span><div className="pagination-actions"><button className="button button-quiet" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={currentPage === 1} type="button">← Previous</button><span className="page-indicator">{currentPage} / {pageCount}</span><button className="button button-quiet" onClick={() => setPage((current) => Math.min(pageCount, current + 1))} disabled={currentPage === pageCount} type="button">Next →</button></div></div>}
         <div className="card-footer"><span className="mini-live-dot" /> Auto-refresh every 5 seconds <span className="bottom-spacer" /><span className="muted-small">{filtered.length} of {deployments.length} shown</span></div>
       </section>
     </>
