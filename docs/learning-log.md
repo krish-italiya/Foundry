@@ -430,3 +430,10 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 ### Important boundary
 - This feature branch has not yet been compiled or exercised against Docker Desktop; run API tests, frontend production build, and a live Windows Docker deployment before merge.
 - Docker restrictions provide defense-in-depth, not a complete sandbox for hostile repositories. Do not expose public deployments without a separately isolated build/execution boundary, credential policy, authentication, quotas, and public TLS/DNS.
+
+### First live Docker build failure and fix (2026-10-27)
+- The first Express image build failed at `RUN npm ci --omit=dev` with `EACCES: permission denied, mkdir '/app/node_modules'`.
+- Root cause: Docker's `WORKDIR /app` created a root-owned directory; switching to `USER node` did not make that directory writable. `COPY --chown=node:node` applies ownership to copied files/directories, but doesn't guarantee the parent work directory is owned by Node.
+- Fix committed to `feat/docker-runtime-adapter`: explicitly `RUN chown node:node /app` before switching to `USER node`, with a regression assertion checking the Dockerfile instruction order.
+- The backend suite (59 tests) and frontend production build passed before this live integration failure. Pull the fix and rerun verification; the Docker deployment is not yet confirmed successful.
+- System-design lesson: unit tests validate the generated configuration contract, but a real image build catches filesystem ownership and runtime integration assumptions that string-based tests cannot prove.
