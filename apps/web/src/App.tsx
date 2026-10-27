@@ -104,7 +104,6 @@ export default function App() {
           loadingDeployments={workspace.loadingDeployments}
           onAddProject={addProject}
           onOpenProject={openProject}
-          onViewProjects={() => navigate("projects")}
           onOpenDeployment={openDeployment}
         />
       )}
