@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CreateDeploymentInput, CreateProjectInput, Project, ProjectWorkspaceTab, WorkspaceView } from "./types/workspace";
+import type { CreateDeploymentInput, CreateProjectInput, Deployment, Project, ProjectWorkspaceTab, WorkspaceView } from "./types/workspace";
 import { useFoundryWorkspace } from "./hooks/useFoundryWorkspace";
 import WorkspaceLayout from "./components/WorkspaceLayout";
 import FeedbackBanners from "./components/FeedbackBanners";
@@ -51,7 +51,7 @@ export default function App() {
     return workspace.createDeployment(workspace.selectedProject, input);
   }
 
-  function openDeployment(deployment: import("./types/workspace").Deployment) {
+  function openDeployment(deployment: Deployment) {
     workspace.setSelectedDeploymentId(deployment.id);
     setProjectTab("build-runtime");
     setActiveView("project-workspace");
