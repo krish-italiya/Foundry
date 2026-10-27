@@ -306,6 +306,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
                         RUN chown node:node /app
                         ENV NODE_ENV=production PORT=8080 HOST=0.0.0.0 HOSTNAME=0.0.0.0
                         COPY --chown=node:node app/ ./
+                        RUN chown node:node /app
                         USER node
                         %s
                         EXPOSE 8080
