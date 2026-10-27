@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CreateDeploymentInput, CreateProjectInput, Deployment, Project, ProjectWorkspaceTab, WorkspaceView } from "./types/workspace";
+import type { CreateDeploymentInput, CreateProjectInput, Project, ProjectWorkspaceTab, WorkspaceView } from "./types/workspace";
 import { useFoundryWorkspace } from "./hooks/useFoundryWorkspace";
 import WorkspaceLayout from "./components/WorkspaceLayout";
 import FeedbackBanners from "./components/FeedbackBanners";
@@ -29,12 +29,6 @@ export default function App() {
     setActiveView("project-workspace");
   }
 
-  function addProject() {
-    workspace.clearFeedback();
-    setProjectFormOpen(true);
-    setActiveView("projects");
-  }
-
   async function createProject(input: CreateProjectInput) {
     const created = await workspace.createProject(input);
     if (created) {
@@ -48,13 +42,6 @@ export default function App() {
   async function createDeployment(input: CreateDeploymentInput) {
     if (!workspace.selectedProject) return null;
     return workspace.createDeployment(workspace.selectedProject, input);
-  }
-
-  function openDeployment(deployment: Deployment) {
-    workspace.setSelectedDeploymentId(deployment.id);
-    setProjectTab("build-runtime");
-    setActiveView("project-workspace");
-    workspace.clearFeedback();
   }
 
   const projectWorkspace = activeView === "project-workspace" && workspace.selectedProject
@@ -102,9 +89,7 @@ export default function App() {
           deployments={workspace.deployments}
           loadingProjects={workspace.loadingProjects}
           loadingDeployments={workspace.loadingDeployments}
-          onAddProject={addProject}
           onOpenProject={openProject}
-          onOpenDeployment={openDeployment}
         />
       )}
 
