@@ -24,8 +24,12 @@ class DockerRuntimeAdapterTest {
         String dockerfile = DockerRuntimeAdapter.dockerfileFor(
                 artifact(BuiltArtifact.LaunchMode.NODE_START), tempDirectory);
 
-        assertThat(dockerfile).contains("FROM node:22-alpine", "RUN npm ci --omit=dev",
-                "USER node", "CMD [\"npm\",\"run\",\"start\"]");
+        assertThat(dockerfile).contains("FROM node:22-alpine", "RUN chown node:node /app",
+                "RUN npm ci --omit=dev", "USER node", "CMD [\"npm\",\"run\",\"start\"]");
+        assertThat(dockerfile.indexOf("RUN chown node:node /app"))
+                .isLessThan(dockerfile.indexOf("USER node"));
+        assertThat(dockerfile.indexOf("USER node"))
+                .isLessThan(dockerfile.indexOf("RUN npm ci --omit=dev"));
     }
 
     @Test
