@@ -722,12 +722,21 @@ function App() {
                         { title: "Health check", detail: "Verify the application responds over HTTP", stage: "HEALTH_CHECK" }
                       ].map((step, index) => {
                         const relevantLogs = logs.filter((entry) => entry.stage === step.stage);
-                        const stageDone = selectedDeployment.status === "SUCCEEDED"
-                          || (index === 0 && logs.some((entry) => entry.stage === "BUILD" && entry.severity === "INFO"))
-                          || (index === 1 && logs.some((entry) => entry.message.toLowerCase().includes("naming to docker.io") || entry.message.toLowerCase().includes("image built")))
-                          || (index === 2 && logs.some((entry) => entry.message.toLowerCase().includes("started docker container")))
-                          || (index === 3 && logs.some((entry) => entry.message.toLowerCase().includes("health check passed")));
-                        const stageFailed = selectedDeployment.status === "FAILED" && !stageDone && (index === 0 || index === 1 || index === 2 || index === 3);
+                        const buildComplete = selectedDeployment.status === "SUCCEEDED"
+                          || logs.some((entry) => entry.message.toLowerCase().includes("repository build succeeded")
+                            || entry.message.toLowerCase().includes("build completed. prepared"));
+                        const imageComplete = selectedDeployment.status === "SUCCEEDED"
+                          || logs.some((entry) => entry.message.toLowerCase().includes("naming to docker.io/library/foundry-deployment")
+                            || entry.message.toLowerCase().includes("image built"));
+                        const startupComplete = selectedDeployment.status === "SUCCEEDED"
+                          || logs.some((entry) => entry.message.toLowerCase().includes("started docker container")
+                            || entry.message.toLowerCase().includes("started the built service at"));
+                        const healthComplete = selectedDeployment.status === "SUCCEEDED"
+                          || logs.some((entry) => entry.message.toLowerCase().includes("health check passed"));
+                        const stageCompletion = [buildComplete, imageComplete, startupComplete, healthComplete];
+                        const stageDone = stageCompletion[index];
+                        const previousStageDone = index === 0 || stageCompletion[index - 1];
+                        const stageFailed = selectedDeployment.status === "FAILED" && !stageDone && previousStageDone;
                         return <div className={"stage-card " + (stageFailed ? "stage-failed" : stageDone ? "stage-done" : "stage-waiting")} key={step.title}>
                           <span className="stage-number">{stageFailed ? "!" : stageDone ? "✓" : String(index + 1).padStart(2, "0")}</span>
                           <div><strong>{step.title}</strong><p>{step.detail}</p><small>{stageFailed ? "Failed" : stageDone ? "Activity recorded" : relevantLogs.length ? "In progress" : "Waiting"}</small></div>
