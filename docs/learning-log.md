@@ -439,3 +439,19 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - Follow-up UX work on the same feature branch replaces the one-page dashboard with separate Overview, Projects, Deployments, and Build & Runtime views. Deployment history is searchable, filterable by status, and paginated to eight releases per page, with a compact mobile navigation bar.
 - Verification still outstanding: rerun the frontend production build after the UI refactor, smoke-test the new views on desktop/mobile, deploy a distinct Vite static frontend, and exercise Docker crash/cleanup/restart handling.
 - System-design lesson: unit tests validate the generated configuration contract, but a real image build catches filesystem ownership and runtime integration assumptions that string-based tests cannot prove.
+
+
+### Project-scoped dashboard and frontend modularization (2026-10-28)
+- Product information architecture: top-level navigation is limited to **Overview** and **Projects**. Selecting a project opens its workspace with **Overview**, **Deployments**, and **Build & Runtime** tabs. This keeps release history and logs scoped to the owning project and avoids global deployment/log screens.
+- Overview is intended as a concise view of project activity and relevant releases, rather than repeating the same project/deployment navigation in redundant quick-action cards.
+- Frontend source responsibilities are separated:
+  - `types/workspace.ts`: domain and API request/response types.
+  - `services/api.ts`: shared HTTP client and error normalization.
+  - `utils/format.ts`: common date, ID, status, and repository formatting helpers.
+  - `hooks/useFoundryWorkspace.ts`: API-backed project/deployment/log state and mutations.
+  - `components/`: shared layout, status/feedback/empty-state primitives, project/deployment lists and forms, pipeline timeline, and terminal log view.
+  - `pages/`: Overview, Projects, selected-project workspace, and its Overview/Deployments/Build & Runtime tab content.
+  - `styles/base.css`, `styles/workspace.css`, and `styles/project-workspace.css`: base styles, shared dashboard component styles, and project workspace styles, composed by `styles.css`.
+- State/ownership principle: `App.tsx` coordinates top-level navigation and connects the workspace hook to page components, while project tabs own view-specific UI state such as filters and pagination.
+- Correctness detail: changing the selected project clears the previous project's deployments and selected release before loading the new project data, avoiding a misleading cross-project display.
+- Verification status at commit time: source files and import references were reviewed through the GitHub connector, but the new composition has **not yet been run through a local TypeScript/Vite production build**. That is the immediate acceptance gate before treating this refactor as complete.
