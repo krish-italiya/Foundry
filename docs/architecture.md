@@ -1,6 +1,6 @@
 # Foundry Architecture — Repository-to-Deployment Pipeline
 
-Status: **the `main` branch has a verified local-process prototype. The Docker runtime implementation is being developed on `feat/docker-runtime-adapter` and has not yet been locally compiled or exercised against Docker Desktop. Keep local-process mode as the default until the feature branch passes Windows verification.**
+Status: **the feature branch has been exercised on Windows with Docker Desktop: a trusted Express repository was built into an image, launched in a constrained container, health-checked, and served through the Foundry local URL. The Node image directory-permission issue found during the first attempt is fixed. The redesigned dashboard views still need a fresh frontend build and UI smoke test before merge. Docker remains opt-in and local-process mode remains disabled by default.**
 
 ## Current path
 
@@ -119,10 +119,14 @@ The ingress is deliberately a local-development seam, not production ingress. Ru
 - Deployed `render-examples/express-hello-world` from GitHub through checkout, npm install, process startup, and health check. The app rendered through its UUID `.localhost:8080` URL.
 - Stopping the verified `node app.js` process changed runtime state to `CRASHED` and recorded a runtime log.
 - Restarting the Foundry API changed a previously successful deployment with no process tracked by the new API process to `INTERRUPTED` and recorded the reconciliation log.
+- Docker Desktop integration: the trusted `render-examples/express-hello-world` repository built an image, started a container with `512m` memory / `1.0` CPU / `128` PID limits and loopback-only port publishing, streamed application logs, passed the HTTP health check, and rendered at its UUID `.localhost:8080` URL (2026-10-27).
+- The first Node image build exposed an `/app` ownership issue when `npm ci` ran as the non-root `node` user. Added an explicit ownership fix and a regression assertion for the Dockerfile instruction order.
+- Dashboard redesign now provides dedicated Overview, Projects, Deployments, and Build & Runtime views, plus search/status filters and paginated deployment history. The latest frontend changes have not yet been locally rebuilt.
 
-## Docker runtime feature-branch checkpoints
+## Next checkpoints
 
-1. Compile the feature branch and run API tests plus the frontend production build on Windows.
-2. With Docker Desktop running, deploy the trusted Express example through checkout, build, image creation, container start, health check, and local URL routing.
-3. Confirm logs stream, crashes reconcile, cleanup removes containers, and API restart marks previous successes `INTERRUPTED` and removes stale deterministic container names.
-4. Design a separately isolated build worker before any public repository execution. Docker alone is not a complete hostile-code sandbox.
+1. Pull the latest feature branch and rerun the complete API test suite and frontend production build after the dashboard refactor.
+2. Smoke-test the new views at desktop and mobile widths; verify project registration/trust, deployment creation, filters, pagination, selected release, and live logs.
+3. Deploy a separate Vite frontend to exercise the static build/image path in addition to the successful Node service deployment.
+4. Validate Docker lifecycle failure/cleanup and API restart reconciliation; then review and merge the feature branch.
+5. Design a separately isolated build worker before any public repository execution. Docker alone is not a complete hostile-code sandbox.
