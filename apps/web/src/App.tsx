@@ -633,14 +633,14 @@ function App() {
               ) : (
                 <>
                   {!selectedProject.buildTrusted && (
-                    <div className="trust-callout"><span className="queue-note-icon">!</span><div><strong>Build trust is off for {selectedProject.name}</strong><p>Foundry will refuse to execute repository scripts until you trust this repository. Review the source and enable trust in Projects.</p></div><button className="button button-quiet" onClick={() => navigate("projects")}>Project settings</button></div>
+                    <div className="trust-callout"><span className="queue-note-icon">!</span><div><strong>Build trust is off for {selectedProject.name}</strong><p>Foundry needs project-level trust or an administrator allowlist entry before executing repository scripts. Review this source and manage trust in Projects.</p></div><button className="button button-quiet" onClick={() => navigate("projects")}>Project settings</button></div>
                   )}
                   <form className="surface-card deployment-create-card" id="deployment-create-form" onSubmit={handleCreateDeployment}>
                     <div className="card-heading"><div><div className="section-kicker">NEW RELEASE</div><h2>Deploy {selectedProject.name}</h2><p>Build a commit or branch into a runnable application.</p></div><span className="deploy-form-icon">↗</span></div>
                     <div className="deployment-form-grid">
                       <label className="field-label">Source ref<input value={sourceRef} onChange={(event) => setSourceRef(event.target.value)} placeholder="main" maxLength={255} required /></label>
                       <label className="field-label">Service path <span className="field-hint">Optional · for monorepos</span><input value={servicePath} onChange={(event) => setServicePath(event.target.value)} placeholder="Leave blank to auto-detect" maxLength={512} /></label>
-                      <button className="button button-primary deploy-button" type="submit" disabled={creatingDeployment || !selectedProject.buildTrusted}>{creatingDeployment ? "Queueing…" : "Deploy now"} <span>→</span></button>
+                      <button className="button button-primary deploy-button" type="submit" disabled={creatingDeployment}>{creatingDeployment ? "Queueing…" : "Deploy now"} <span>→</span></button>
                     </div>
                     <div className="form-helper"><span className="mini-live-dot" /> Build, image packaging, startup, and health checks will appear under Build &amp; Runtime.</div>
                   </form>
