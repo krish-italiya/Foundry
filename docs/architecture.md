@@ -1,6 +1,6 @@
 # Foundry Architecture — Repository-to-Deployment Pipeline
 
-Status: **the feature branch has been exercised on Windows with Docker Desktop: a trusted Express repository was built into an image, launched in a constrained container, health-checked, and served through the Foundry local URL. The Node image directory-permission issue found during the first attempt is fixed. The latest modular UI refactor still needs a fresh TypeScript/Vite production build, backend regression run, and UI smoke test before merge. Docker remains opt-in and local-process mode remains disabled by default.**
+Status: **the feature branch has been exercised on Windows with Docker Desktop: a trusted Express repository was built into an image, launched in a constrained container, health-checked, and served through the Foundry local URL. The Node image directory-permission issue found during the first attempt is fixed. The latest modular UI refactor passed a fresh TypeScript/Vite production build and the backend regression suite (59 tests, 0 failures). UI interaction smoke tests and Docker lifecycle cleanup remain before merge. Docker remains opt-in and local-process mode remains disabled by default.**
 
 ## Current path
 
@@ -128,7 +128,7 @@ The ingress is deliberately a local-development seam, not production ingress. Ru
 
 ## Next checkpoints
 
-1. Pull the latest feature branch and run the complete API test suite plus `npm run build` for the newly modular frontend.
+1. Fresh Windows verification completed: `npm run build` passed and the complete API suite reported 59 tests, 0 failures, 0 errors, and 0 skipped.
 2. Smoke-test desktop/mobile navigation; verify project registration/trust, project-scoped tabs, deployment creation, search/status filters, pagination, release selection, logs, and application links.
 3. Express and Ionic React/Vite deployments have already validated the Node service and static frontend Docker paths locally.
 4. Validate Docker lifecycle failure/cleanup and API restart reconciliation; then review and merge the feature branch.
