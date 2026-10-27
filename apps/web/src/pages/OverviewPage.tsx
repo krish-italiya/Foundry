@@ -1,5 +1,5 @@
 import type { Deployment, Project } from "../types/workspace";
-import { shortId, timeLabel } from "../utils/format";
+import { shortId, statusLabel, timeLabel } from "../utils/format";
 import StatusBadge from "../components/StatusBadge";
 
 interface OverviewPageProps {
@@ -8,14 +8,12 @@ interface OverviewPageProps {
   deployments: Deployment[];
   loadingProjects: boolean;
   loadingDeployments: boolean;
-  onAddProject: () => void;
   onOpenProject: (project: Project) => void;
-  onOpenDeployment: (deployment: Deployment) => void;
 }
 
 export default function OverviewPage({
   projects, selectedProject, deployments, loadingProjects, loadingDeployments,
-  onAddProject, onOpenProject, onOpenDeployment
+  onOpenProject
 }: OverviewPageProps) {
   const succeeded = deployments.filter((deployment) => deployment.status === "SUCCEEDED").length;
   const failed = deployments.filter((deployment) => deployment.status === "FAILED").length;
@@ -28,10 +26,6 @@ export default function OverviewPage({
           <div className="eyebrow"><span className="eyebrow-line" />WORKSPACE / OVERVIEW</div>
           <h1>Ship software.<br /><span>Know what’s running.</span></h1>
           <p className="page-subtitle">Your repositories, their releases, and runtime health—organized around the projects you own.</p>
-        </div>
-        <div className="intro-actions">
-          <button className="button button-quiet" onClick={onAddProject}>＋ Add project</button>
-          {selectedProject && <button className="button button-primary" onClick={() => onOpenProject(selectedProject)}>Open {selectedProject.name} <span>→</span></button>}
         </div>
       </section>
 
@@ -49,15 +43,15 @@ export default function OverviewPage({
             {selectedProject && <button className="text-action" onClick={() => onOpenProject(selectedProject)}>Open project workspace <span>→</span></button>}
           </div>
           <div className="recent-list">
-            {!selectedProject ? <div className="empty-state"><strong>No project selected</strong><span>Add a repository to start tracking its releases.</span></div>
+            {!selectedProject ? <div className="empty-state"><strong>No project selected</strong><span>Choose a project in Projects to review its release activity.</span></div>
             : loadingDeployments && deployments.length === 0 ? <div className="empty-state"><div className="loader" /><strong>Loading deployment history</strong></div>
             : recent.length === 0 ? <div className="empty-state"><div className="empty-illustration"><span>↗</span><i /><b /></div><strong>No deployments yet</strong><span>Create the first deployment inside this project's workspace.</span><button className="text-action" onClick={() => onOpenProject(selectedProject)}>Open project <span>→</span></button></div>
             : recent.map((deployment) => (
-              <button className="recent-deployment-row" key={deployment.id} onClick={() => onOpenDeployment(deployment)}>
+              <div className="recent-deployment-row" key={deployment.id} aria-label={"Release " + shortId(deployment.id) + ", " + statusLabel(deployment.status)}>
                 <span className={"deployment-symbol deployment-symbol-" + deployment.status.toLowerCase().replace(/_/g, "-")}>{deployment.status === "SUCCEEDED" ? "✓" : deployment.status === "FAILED" ? "!" : "↗"}</span>
                 <span className="deployment-main"><span className="deployment-title">Release <b>#{shortId(deployment.id)}</b></span><span className="deployment-meta"><span>{deployment.sourceRef}</span><i>·</i>{timeLabel(deployment.createdAt)}</span></span>
-                <StatusBadge status={deployment.status} /><span className="row-chevron">›</span>
-              </button>
+                <StatusBadge status={deployment.status} />
+              </div>
             ))}
           </div>
           <div className="card-footer"><span className="mini-live-dot" /> Activity for selected project <span className="bottom-spacer" /><span className="muted-small">{deployments.length} releases</span></div>
