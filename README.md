@@ -86,7 +86,7 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 
 ## Next milestone
 
-Finish the Docker runtime and project-scoped dashboard review. The Express service and an Ionic React/Vite frontend have both successfully deployed locally. The latest modular UI refactor still requires a fresh Windows TypeScript/Vite production build, backend regression suite, and UI smoke test before merge. Then validate container lifecycle cleanup. Runtime monitoring improves diagnosis but does not restart applications or sandbox builds. Do not expose workloads publicly before an isolated build boundary, credential controls, authentication/authorization, quotas, and public TLS/DNS ingress are implemented.
+Finish the Docker runtime and project-scoped dashboard review. The Express service and an Ionic React/Vite frontend have both successfully deployed locally. The latest modular UI refactor passed a fresh Windows TypeScript/Vite production build and the backend regression suite (59 tests, 0 failures). Project navigation and interaction smoke tests, plus Docker lifecycle cleanup tests, remain before merge. Then validate container lifecycle cleanup. Runtime monitoring improves diagnosis but does not restart applications or sandbox builds. Do not expose workloads publicly before an isolated build boundary, credential controls, authentication/authorization, quotas, and public TLS/DNS ingress are implemented.
 
 
 Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
