@@ -55,8 +55,9 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 - Guarded deployment lifecycle with persisted timestamps, failure reason, optional service path, and application URL.
 - Cursor-paginated deployment logs with ordered sequence numbers, bounded messages, and captured stdout/stderr.
 - An opt-in worker and local-process runtime adapter for trusted local development.
-- An opt-in Docker runtime adapter on `feat/docker-runtime-adapter`, with generated fixed Dockerfiles, loopback-only host port publishing, CPU/memory/PID limits, dropped Linux capabilities, non-root Java/Node images, health checks, container logs, and cleanup. This branch implementation requires local Docker/Windows verification before merge.
-- React + TypeScript + Vite dashboard in `apps/web` for project registration, deployment requests/history, log viewing, and application URLs.
+- An opt-in Docker runtime adapter on `feat/docker-runtime-adapter`, with generated fixed Dockerfiles, loopback-only host port publishing, CPU/memory/PID limits, dropped Linux capabilities, non-root Java/Node images, health checks, container logs, and cleanup. A trusted Express service has successfully built and run through this adapter on Windows with Docker Desktop.
+- React + TypeScript + Vite dashboard in `apps/web`, organized into domain types, an API client, a workspace state hook, reusable components, separate pages, and layered stylesheets. Navigation is project-centered: Overview → Projects → a selected project's Overview, Deployments, and Build & Runtime tabs.
+- Deployment history is scoped to the selected project and includes text/status filters and eight-item pagination. A separate Ionic React/Vite frontend has also successfully built and served through Foundry's static Docker runtime path.
 
 **Repository build pipeline (tested locally; current onboarding changes are on `feat/npm-lockfile-fallback` and still need a fresh verification run):**
 - Checkout of an explicitly selected HTTPS GitHub repository/ref into a disposable workspace.
@@ -85,7 +86,7 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 
 ## Next milestone
 
-Finish the Docker runtime review and verify the redesigned multi-view dashboard on Windows. Test at least one Node service and one static Vite frontend, then validate container lifecycle cleanup. Runtime monitoring improves diagnosis but does not restart applications or sandbox builds. Do not run arbitrary repositories or expose workloads publicly before an isolated build boundary, credential controls, authentication/authorization, quotas, and public TLS/DNS ingress are implemented.
+Finish the Docker runtime and project-scoped dashboard review. The Express service and an Ionic React/Vite frontend have both successfully deployed locally. The latest modular UI refactor still requires a fresh Windows TypeScript/Vite production build, backend regression suite, and UI smoke test before merge. Then validate container lifecycle cleanup. Runtime monitoring improves diagnosis but does not restart applications or sandbox builds. Do not expose workloads publicly before an isolated build boundary, credential controls, authentication/authorization, quotas, and public TLS/DNS ingress are implemented.
 
 
 Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
