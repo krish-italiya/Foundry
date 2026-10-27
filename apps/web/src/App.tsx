@@ -17,6 +17,7 @@ type DeploymentStatus =
   | "FAILED";
 
 type RuntimeState = "NOT_STARTED" | "RUNNING" | "STOPPED" | "CRASHED" | "INTERRUPTED";
+type WorkspaceView = "overview" | "projects" | "deployments" | "build-runtime";
 
 type Deployment = {
   id: string;
@@ -56,9 +57,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, ""
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
-  if (init.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
   const response = await fetch(API_BASE_URL + path, { ...init, headers });
   if (!response.ok) {
@@ -82,12 +81,7 @@ function timeLabel(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function shortId(value: string): string {
@@ -95,16 +89,16 @@ function shortId(value: string): string {
 }
 
 function statusLabel(status: DeploymentStatus): string {
-  return status.replace("_", " ").toLowerCase();
+  return status.replace(/_/g, " ").toLowerCase();
 }
 
 function runtimeStateLabel(state: RuntimeState): string {
-  return state.replace("_", " ").toLowerCase();
+  return state.replace(/_/g, " ").toLowerCase();
 }
 
 function StatusBadge({ status }: { status: DeploymentStatus }) {
   return (
-    <span className={"status-badge status-" + status.toLowerCase().replace("_", "-")}>
+    <span className={"status-badge status-" + status.toLowerCase().replace(/_/g, "-")}>
       <span className="status-dot" />
       {statusLabel(status)}
     </span>
@@ -122,6 +116,7 @@ function Mark() {
 }
 
 function App() {
+  const [activeView, setActiveView] = useState<WorkspaceView>("overview");
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [deployments, setDeployments] = useState<Deployment[]>([]);
@@ -143,16 +138,33 @@ function App() {
   const [creatingDeployment, setCreatingDeployment] = useState(false);
   const [pageError, setPageError] = useState("");
   const [notice, setNotice] = useState("");
+  const [deploymentQuery, setDeploymentQuery] = useState("");
+  const [deploymentStatusFilter, setDeploymentStatusFilter] = useState("ALL");
   const lastLogSequence = useRef(0);
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
   const selectedDeployment = deployments.find((deployment) => deployment.id === selectedDeploymentId);
   const succeededCount = deployments.filter((item) => item.status === "SUCCEEDED").length;
   const failedCount = deployments.filter((item) => item.status === "FAILED").length;
+  const runningCount = deployments.filter((item) => item.runtimeState === "RUNNING").length;
+  const filteredDeployments = deployments.filter((deployment) => {
+    const query = deploymentQuery.trim().toLowerCase();
+    const matchesQuery = !query
+      || deployment.id.toLowerCase().includes(query)
+      || deployment.sourceRef.toLowerCase().includes(query)
+      || (deployment.servicePath ?? "").toLowerCase().includes(query)
+      || deployment.status.toLowerCase().includes(query);
+    return matchesQuery && (deploymentStatusFilter === "ALL" || deployment.status === deploymentStatusFilter);
+  });
+  const viewLabels: Record<WorkspaceView, { title: string; eyebrow: string; subtitle: string }> = {
+    overview: { title: "Overview", eyebrow: "WORKSPACE / OVERVIEW", subtitle: "Your projects, releases, and runtime health at a glance." },
+    projects: { title: "Projects", eyebrow: "WORKSPACE / PROJECTS", subtitle: "Connect repositories and manage which code Foundry is allowed to build." },
+    deployments: { title: "Deployments", eyebrow: "DELIVERY / DEPLOYMENTS", subtitle: "Create releases, filter deployment history, and follow each rollout." },
+    "build-runtime": { title: "Build & Runtime", eyebrow: "OBSERVABILITY / BUILD & RUNTIME", subtitle: "Inspect one release from build output through its running application." }
+  };
 
   useEffect(() => {
     let cancelled = false;
-
     const load = async () => {
       try {
         const [projectItems] = await Promise.all([
@@ -162,10 +174,8 @@ function App() {
         if (cancelled) return;
         setProjects(projectItems);
         setApiState("online");
-        setSelectedProjectId((current) => {
-          if (current && projectItems.some((project) => project.id === current)) return current;
-          return projectItems[0]?.id ?? "";
-        });
+        setSelectedProjectId((current) => current && projectItems.some((project) => project.id === current)
+          ? current : projectItems[0]?.id ?? "");
       } catch (error) {
         if (cancelled) return;
         setApiState("offline");
@@ -174,7 +184,6 @@ function App() {
         if (!cancelled) setLoadingProjects(false);
       }
     };
-
     void load();
     const interval = window.setInterval(() => void load(), 15000);
     return () => {
@@ -191,21 +200,15 @@ function App() {
       setLoadingDeployments(false);
       return;
     }
-
     const load = async () => {
       try {
         setLoadingDeployments(true);
-        const items = await api<Deployment[]>(
-          "/api/v1/projects/" + encodeURIComponent(selectedProjectId) + "/deployments"
-        );
+        const items = await api<Deployment[]>("/api/v1/projects/" + encodeURIComponent(selectedProjectId) + "/deployments");
         if (cancelled) return;
         setDeployments(items);
         setApiState("online");
-        setSelectedDeploymentId((current) =>
-          current && items.some((deployment) => deployment.id === current)
-            ? current
-            : items[0]?.id ?? ""
-        );
+        setSelectedDeploymentId((current) => current && items.some((deployment) => deployment.id === current)
+          ? current : items[0]?.id ?? "");
       } catch (error) {
         if (cancelled) return;
         setPageError(error instanceof Error ? error.message : "Could not load deployments.");
@@ -213,7 +216,6 @@ function App() {
         if (!cancelled) setLoadingDeployments(false);
       }
     };
-
     void load();
     const interval = window.setInterval(() => void load(), 5000);
     return () => {
@@ -228,12 +230,10 @@ function App() {
     lastLogSequence.current = 0;
     setLogs([]);
     setLogsHasMore(false);
-
     if (!selectedDeploymentId) {
       setLoadingLogs(false);
       return;
     }
-
     const load = async () => {
       if (inFlight) return;
       inFlight = true;
@@ -249,15 +249,12 @@ function App() {
         lastLogSequence.current = page.nextAfterSequence;
         setLogsHasMore(page.hasMore);
       } catch (error) {
-        if (!cancelled) {
-          setPageError(error instanceof Error ? error.message : "Could not load deployment logs.");
-        }
+        if (!cancelled) setPageError(error instanceof Error ? error.message : "Could not load deployment logs.");
       } finally {
         inFlight = false;
         if (!cancelled) setLoadingLogs(false);
       }
     };
-
     void load();
     const interval = window.setInterval(() => void load(), 5000);
     return () => {
@@ -272,9 +269,7 @@ function App() {
       const items = await api<Project[]>("/api/v1/projects");
       setProjects(items);
       setApiState("online");
-      if (!items.some((project) => project.id === selectedProjectId)) {
-        setSelectedProjectId(items[0]?.id ?? "");
-      }
+      if (!items.some((project) => project.id === selectedProjectId)) setSelectedProjectId(items[0]?.id ?? "");
     } catch (error) {
       setApiState("offline");
       setPageError(error instanceof Error ? error.message : "Could not refresh projects.");
@@ -304,6 +299,7 @@ function App() {
       setNotice(created.buildTrusted
         ? "Project registered and trusted for local builds."
         : "Project registered. Enable Build trust before running repository build scripts.");
+      setActiveView("projects");
       setApiState("online");
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Could not register the project.");
@@ -314,13 +310,10 @@ function App() {
 
   async function handleToggleBuildTrust() {
     if (!selectedProject || updatingBuildTrust) return;
-
     const buildTrusted = !selectedProject.buildTrusted;
     if (buildTrusted && !window.confirm(
       "Trust this repository for local builds? Foundry will execute repository-defined build and start scripts on this computer. Continue only if you trust this code."
-    )) {
-      return;
-    }
+    )) return;
 
     setPageError("");
     setNotice("");
@@ -328,10 +321,7 @@ function App() {
     try {
       const updated = await api<Project>(
         "/api/v1/projects/" + encodeURIComponent(selectedProject.id) + "/build-trust",
-        {
-          method: "PATCH",
-          body: JSON.stringify({ buildTrusted })
-        }
+        { method: "PATCH", body: JSON.stringify({ buildTrusted }) }
       );
       setProjects((current) => current.map((project) => project.id === updated.id ? updated : project));
       setNotice(buildTrusted
@@ -353,14 +343,12 @@ function App() {
     try {
       const created = await api<Deployment>(
         "/api/v1/projects/" + encodeURIComponent(selectedProjectId) + "/deployments",
-        {
-          method: "POST",
-          body: JSON.stringify({ sourceRef: sourceRef.trim(), servicePath: servicePath.trim() || null })
-        }
+        { method: "POST", body: JSON.stringify({ sourceRef: sourceRef.trim(), servicePath: servicePath.trim() || null }) }
       );
       setDeployments((current) => [created, ...current.filter((deployment) => deployment.id !== created.id)]);
       setSelectedDeploymentId(created.id);
-      setNotice("Deployment request accepted. Status will refresh automatically.");
+      setNotice("Deployment request accepted. Build and runtime events will appear in Build & Runtime.");
+      setActiveView("build-runtime");
       setApiState("online");
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Could not request deployment.");
@@ -369,43 +357,55 @@ function App() {
     }
   }
 
-  function scrollTo(id: string) {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  function openDeployment(deploymentId: string) {
+    setSelectedDeploymentId(deploymentId);
+    setActiveView("build-runtime");
+  }
+
+  function navigate(view: WorkspaceView) {
+    setActiveView(view);
+    setPageError("");
+    if (view === "projects") setNotice("");
+  }
+
+  function openNewProject() {
+    setProjectFormOpen(true);
+    setActiveView("projects");
+    setNotice("");
   }
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand-lockup">
+        <button className="brand-lockup" onClick={() => navigate("overview")} aria-label="Foundry overview">
           <Mark />
-          <div>
-            <div className="brand-name">foundry<span>.</span></div>
-            <div className="brand-caption">DEPLOYMENT PLATFORM</div>
-          </div>
-        </div>
+          <span className="brand-copy">
+            <span className="brand-name">foundry<span>.</span></span>
+            <span className="brand-caption">DEPLOYMENT PLATFORM</span>
+          </span>
+        </button>
 
         <div className="side-label">WORKSPACE</div>
         <nav className="side-nav" aria-label="Workspace navigation">
-          <button className="nav-item active" onClick={() => scrollTo("overview")}>
-            <span className="nav-glyph">◫</span> Overview
+          <button className={"nav-item " + (activeView === "overview" ? "active" : "")} onClick={() => navigate("overview")}>
+            <span className="nav-glyph">◫</span><span>Overview</span>
           </button>
-          <button className="nav-item" onClick={() => scrollTo("projects")}>
-            <span className="nav-glyph">◇</span> Projects
-            <span className="nav-count">{projects.length}</span>
+          <button className={"nav-item " + (activeView === "projects" ? "active" : "")} onClick={() => navigate("projects")}>
+            <span className="nav-glyph">◇</span><span>Projects</span><span className="nav-count">{projects.length}</span>
           </button>
-          <button className="nav-item" onClick={() => scrollTo("deployments")}>
-            <span className="nav-glyph">↗</span> Deployments
-            <span className="nav-count">{deployments.length}</span>
+          <button className={"nav-item " + (activeView === "deployments" ? "active" : "")} onClick={() => navigate("deployments")}>
+            <span className="nav-glyph">↗</span><span>Deployments</span><span className="nav-count">{deployments.length}</span>
+          </button>
+          <button className={"nav-item " + (activeView === "build-runtime" ? "active" : "")} onClick={() => navigate("build-runtime")}>
+            <span className="nav-glyph">⌁</span><span>Build &amp; Runtime</span>
+            {selectedDeployment && <span className="nav-indicator" title={"Release #" + shortId(selectedDeployment.id)} />}
           </button>
         </nav>
 
         <div className="sidebar-spacer" />
 
         <div className="runtime-card">
-          <div className="runtime-card-top">
-            <span className="runtime-icon">⌘</span>
-            <span>LOCAL ENVIRONMENT</span>
-          </div>
+          <div className="runtime-card-top"><span className="runtime-icon">⌘</span><span>LOCAL ENVIRONMENT</span></div>
           <div className="runtime-title">Control plane</div>
           <div className="runtime-status">
             <span className={"pulse-dot " + (apiState === "online" ? "pulse-green" : apiState === "offline" ? "pulse-red" : "")} />
@@ -416,42 +416,26 @@ function App() {
 
         <div className="sidebar-footer">
           <div className="avatar">F</div>
-          <div className="footer-user">
-            <strong>Developer workspace</strong>
-            <span>Local development</span>
-          </div>
+          <div className="footer-user"><strong>Developer workspace</strong><span>Local development</span></div>
           <span className="footer-dots">•••</span>
         </div>
       </aside>
 
-      <main className="main-panel" id="overview">
+      <main className="main-panel">
         <header className="topbar">
-          <div className="breadcrumbs"><span>Workspace</span><span className="crumb-divider">/</span><strong>Overview</strong></div>
+          <div className="breadcrumbs"><span>Workspace</span><span className="crumb-divider">/</span><strong>{viewLabels[activeView].title}</strong></div>
           <div className="topbar-right">
             <span className={"api-pill " + (apiState === "online" ? "api-pill-online" : apiState === "offline" ? "api-pill-offline" : "")}>
               <span className="pulse-dot" />
-              {apiState === "online" ? "All systems operational" : apiState === "offline" ? "API disconnected" : "Connecting"}
+              {apiState === "online" ? "API connected" : apiState === "offline" ? "API unavailable" : "Connecting"}
             </span>
-            <button className="icon-button" onClick={() => void refreshProjects()} aria-label="Refresh projects" title="Refresh">
-              ↻
-            </button>
+            <button className="icon-button" onClick={() => void refreshProjects()} aria-label="Refresh workspace data" title="Refresh">↻</button>
+            {activeView === "projects" && <button className="button button-primary header-action" onClick={openNewProject}>＋ New project</button>}
+            {activeView === "deployments" && <button className="button button-primary header-action" onClick={() => document.getElementById("deployment-create-form")?.scrollIntoView({ behavior: "smooth", block: "center" })}>＋ New deployment</button>}
           </div>
         </header>
 
         <div className="page-content">
-          <section className="welcome-row">
-            <div>
-              <div className="eyebrow"><span className="eyebrow-line" /> DEVELOPER PLATFORM <span className="eyebrow-dot">•</span> V1 PREVIEW</div>
-              <h1>Your deployment <span>workspace.</span></h1>
-              <p className="page-subtitle">Ship with confidence. Keep every project, release, and runtime signal in one place.</p>
-            </div>
-            <div className="welcome-decoration" aria-hidden="true">
-              <div className="orbit orbit-one" />
-              <div className="orbit orbit-two" />
-              <div className="orbit-core"><Mark /></div>
-            </div>
-          </section>
-
           {pageError && (
             <div className="alert alert-error" role="alert">
               <span className="alert-symbol">!</span>
@@ -461,248 +445,293 @@ function App() {
           )}
           {notice && (
             <div className="alert alert-success" role="status">
-              <span className="alert-symbol">✓</span>
-              <p>{notice}</p>
+              <span className="alert-symbol">✓</span><p>{notice}</p>
               <button className="alert-close" onClick={() => setNotice("")} aria-label="Dismiss message">×</button>
             </div>
           )}
 
-          <section className="stats-grid" aria-label="Workspace summary">
-            <article className="stat-card">
-              <div className="stat-top"><span className="stat-label">REGISTERED PROJECTS</span><span className="stat-icon stat-icon-violet">◇</span></div>
-              <div className="stat-value">{loadingProjects ? "—" : projects.length.toString().padStart(2, "0")}</div>
-              <div className="stat-foot"><span className="stat-foot-dot violet-dot" /> Source repositories connected</div>
-            </article>
-            <article className="stat-card">
-              <div className="stat-top"><span className="stat-label">PROJECT DEPLOYMENTS</span><span className="stat-icon stat-icon-blue">↗</span></div>
-              <div className="stat-value">{deployments.length.toString().padStart(2, "0")}</div>
-              <div className="stat-foot"><span className="stat-foot-dot blue-dot" /> {selectedProject ? "For " + selectedProject.name : "Select a project to view history"}</div>
-            </article>
-            <article className="stat-card">
-              <div className="stat-top"><span className="stat-label">SUCCEEDED</span><span className="stat-icon stat-icon-green">✓</span></div>
-              <div className="stat-value">{succeededCount.toString().padStart(2, "0")}</div>
-              <div className="stat-foot"><span className="stat-foot-dot green-dot" /> Health check passed</div>
-            </article>
-            <article className="stat-card">
-              <div className="stat-top"><span className="stat-label">FAILED</span><span className="stat-icon stat-icon-amber">!</span></div>
-              <div className="stat-value">{failedCount.toString().padStart(2, "0")}</div>
-              <div className="stat-foot"><span className="stat-foot-dot amber-dot" /> Needs investigation</div>
-            </article>
-          </section>
-
-          <section className="content-grid">
-            <article className="panel projects-panel" id="projects">
-              <div className="panel-heading">
+          {activeView === "overview" && (
+            <>
+              <section className="page-intro overview-intro">
                 <div>
-                  <div className="section-kicker">YOUR WORKSPACE</div>
-                  <h2>Projects <span className="heading-count">{projects.length}</span></h2>
-                  <p>Connect a repository to start a deployment.</p>
+                  <div className="eyebrow"><span className="eyebrow-line" />{viewLabels.overview.eyebrow}</div>
+                  <h1>Ship software.<br /><span>Know what’s running.</span></h1>
+                  <p className="page-subtitle">A clear view of your repositories, deployments, and runtime signals — without digging through one long page.</p>
                 </div>
-                <button className="button button-primary button-small" onClick={() => setProjectFormOpen((open) => !open)}>
-                  <span>＋</span> New project
-                </button>
-              </div>
+                <div className="intro-actions">
+                  <button className="button button-quiet" onClick={openNewProject}>＋ Add project</button>
+                  <button className="button button-primary" onClick={() => navigate("deployments")}>Deploy a project <span>→</span></button>
+                </div>
+              </section>
+
+              <section className="stats-grid" aria-label="Workspace summary">
+                <article className="stat-card">
+                  <div className="stat-top"><span className="stat-label">PROJECTS</span><span className="stat-icon stat-icon-violet">◇</span></div>
+                  <div className="stat-value">{loadingProjects ? "—" : projects.length.toString().padStart(2, "0")}</div>
+                  <div className="stat-foot"><span className="stat-foot-dot violet-dot" /> Repositories connected</div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-top"><span className="stat-label">DEPLOYMENTS</span><span className="stat-icon stat-icon-blue">↗</span></div>
+                  <div className="stat-value">{deployments.length.toString().padStart(2, "0")}</div>
+                  <div className="stat-foot"><span className="stat-foot-dot blue-dot" /> For {selectedProject?.name ?? "selected project"}</div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-top"><span className="stat-label">SUCCEEDED</span><span className="stat-icon stat-icon-green">✓</span></div>
+                  <div className="stat-value">{succeededCount.toString().padStart(2, "0")}</div>
+                  <div className="stat-foot"><span className="stat-foot-dot green-dot" /> Health check passed</div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-top"><span className="stat-label">FAILED</span><span className="stat-icon stat-icon-amber">!</span></div>
+                  <div className="stat-value">{failedCount.toString().padStart(2, "0")}</div>
+                  <div className="stat-foot"><span className="stat-foot-dot amber-dot" /> Needs attention</div>
+                </article>
+              </section>
+
+              <section className="overview-grid">
+                <article className="surface-card">
+                  <div className="card-heading">
+                    <div><div className="section-kicker">LATEST ACTIVITY</div><h2>Recent deployments</h2><p>Latest releases for {selectedProject?.name ?? "your selected project"}.</p></div>
+                    <button className="text-action" onClick={() => navigate("deployments")}>View history <span>→</span></button>
+                  </div>
+                  <div className="recent-list">
+                    {loadingDeployments && deployments.length === 0 ? <div className="empty-state"><div className="loader" /><strong>Loading deployment history</strong></div>
+                    : deployments.length === 0 ? (
+                      <div className="empty-state">
+                        <div className="empty-illustration"><span>↗</span><i /><b /></div>
+                        <strong>No deployments yet</strong><span>Register a repository, then create your first release.</span>
+                        <button className="text-action" onClick={() => navigate("deployments")}>Start a deployment <span>→</span></button>
+                      </div>
+                    ) : deployments.slice(0, 5).map((deployment) => (
+                      <button className="recent-deployment-row" key={deployment.id} onClick={() => openDeployment(deployment.id)}>
+                        <span className={"deployment-symbol deployment-symbol-" + deployment.status.toLowerCase().replace(/_/g, "-")}>{deployment.status === "SUCCEEDED" ? "✓" : deployment.status === "FAILED" ? "!" : "↗"}</span>
+                        <span className="deployment-main">
+                          <span className="deployment-title">Release <b>#{shortId(deployment.id)}</b></span>
+                          <span className="deployment-meta"><span>{deployment.sourceRef}</span><i>·</i>{timeLabel(deployment.createdAt)}</span>
+                        </span>
+                        <StatusBadge status={deployment.status} /><span className="row-chevron">›</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="card-footer"><span className="mini-live-dot" /> Auto-refreshes every 5 seconds <span className="bottom-spacer" /><span className="muted-small">{loadingDeployments ? "Refreshing…" : "Up to date"}</span></div>
+                </article>
+
+                <div className="overview-side-column">
+                  <article className="surface-card quickstart-card">
+                    <div className="section-kicker">GET STARTED</div>
+                    <h2>Your next step</h2>
+                    <p>{projects.length === 0 ? "Connect a repository to begin your first build." : deployments.length === 0 ? "Your repository is connected. Create a deployment to build and launch it." : failedCount > 0 ? "Review the latest failure and its logs to find the cause." : "Open a release to inspect its build output, health check, and runtime."}</p>
+                    <div className="quickstart-actions">
+                      <button className="button button-primary" onClick={() => projects.length === 0 ? openNewProject() : navigate("deployments")}>{projects.length === 0 ? "Connect repository" : "Open deployments"} <span>→</span></button>
+                      <button className="button button-quiet" onClick={() => navigate("build-runtime")}>Build &amp; Runtime</button>
+                    </div>
+                  </article>
+                  <article className="surface-card pipeline-card">
+                    <div className="section-kicker">DEPLOYMENT FLOW</div>
+                    <h2>From repo to runtime</h2>
+                    <div className="pipeline-steps">
+                      <div className="pipeline-step"><span>01</span><div><strong>Checkout &amp; build</strong><small>Resolve the manifest and produce an artifact.</small></div></div>
+                      <div className="pipeline-step"><span>02</span><div><strong>Package</strong><small>Create an image for a supported runtime.</small></div></div>
+                      <div className="pipeline-step"><span>03</span><div><strong>Start &amp; verify</strong><small>Wait for the application health check.</small></div></div>
+                    </div>
+                  </article>
+                </div>
+              </section>
+            </>
+          )}
+
+          {activeView === "projects" && (
+            <>
+              <section className="page-heading-row">
+                <div><div className="eyebrow"><span className="eyebrow-line" />{viewLabels.projects.eyebrow}</div><h1>Projects</h1><p className="page-subtitle">{viewLabels.projects.subtitle}</p></div>
+                <button className="button button-primary" onClick={() => setProjectFormOpen((open) => !open)}>{projectFormOpen ? "Close form" : "＋ New project"}</button>
+              </section>
 
               {projectFormOpen && (
-                <form className="project-form" onSubmit={handleCreateProject}>
-                  <div className="form-title">Register a project</div>
-                  <label>
-                    Project name
-                    <input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="e.g. storefront-api" maxLength={80} required />
-                  </label>
-                  <label>
-                    Repository URL
-                    <input type="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/org/repository" maxLength={2048} required />
-                  </label>
+                <form className="surface-card project-form-card" onSubmit={handleCreateProject}>
+                  <div className="form-title">Register a repository</div>
+                  <p className="form-description">Give the repository a recognizable name. Trust is optional now and can be enabled later.</p>
+                  <div className="form-grid">
+                    <label>Project name<input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="e.g. storefront-api" maxLength={80} required /></label>
+                    <label>Repository URL<input type="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/org/repository" maxLength={2048} required /></label>
+                  </div>
                   <label className="trust-consent">
-                    <input
-                      className="trust-consent-input"
-                      type="checkbox"
-                      checked={buildTrustedOnCreate}
-                      onChange={(event) => setBuildTrustedOnCreate(event.target.checked)}
-                    />
-                    <span className="trust-consent-copy">
-                      <strong>Trust this repository for local builds</strong>
-                      <small>Foundry may run dependency install, build, test and start scripts from this repository on this computer. Enable only for code you trust.</small>
-                    </span>
+                    <input className="trust-consent-input" type="checkbox" checked={buildTrustedOnCreate} onChange={(event) => setBuildTrustedOnCreate(event.target.checked)} />
+                    <span className="trust-consent-copy"><strong>Trust this repository for local builds</strong><small>Foundry may execute dependency installation, build, test, and start scripts from this repository on this computer. Enable only for code you trust.</small></span>
                   </label>
                   <div className="form-actions">
                     <button type="button" className="button button-quiet" onClick={() => setProjectFormOpen(false)}>Cancel</button>
-                    <button className="button button-primary" type="submit" disabled={creatingProject}>
-                      {creatingProject ? "Registering…" : "Register project"}
-                    </button>
+                    <button className="button button-primary" type="submit" disabled={creatingProject}>{creatingProject ? "Registering…" : "Register project"}</button>
                   </div>
                 </form>
               )}
 
-              <div className="project-list">
-                {loadingProjects && projects.length === 0 ? (
-                  <div className="empty-state"><div className="loader" /><strong>Loading projects</strong><span>Connecting to the Foundry API…</span></div>
-                ) : projects.length === 0 ? (
-                  <div className="empty-state">
-                    <div className="empty-illustration"><span>◇</span><i /><b /></div>
-                    <strong>Your workspace starts here</strong>
-                    <span>Register your first repository to see it in this list.</span>
-                    {!projectFormOpen && <button className="text-action" onClick={() => setProjectFormOpen(true)}>Create your first project <span>→</span></button>}
+              <section className="projects-layout">
+                <article className="surface-card">
+                  <div className="card-heading"><div><div className="section-kicker">YOUR WORKSPACE</div><h2>Repositories <span className="heading-count">{projects.length}</span></h2><p>Select a project to inspect its configuration.</p></div><button className="text-action" onClick={() => void refreshProjects()}>Refresh ↻</button></div>
+                  <div className="project-list">
+                    {loadingProjects && projects.length === 0 ? <div className="empty-state"><div className="loader" /><strong>Loading projects</strong></div>
+                    : projects.length === 0 ? <div className="empty-state"><div className="empty-illustration"><span>◇</span><i /><b /></div><strong>No projects yet</strong><span>Start by connecting a GitHub repository.</span><button className="text-action" onClick={() => setProjectFormOpen(true)}>Add your first project <span>→</span></button></div>
+                    : projects.map((project, index) => (
+                      <button key={project.id} className={"project-row " + (project.id === selectedProjectId ? "project-row-selected" : "")} onClick={() => setSelectedProjectId(project.id)}>
+                        <span className={"repo-avatar repo-avatar-" + (index % 4)}>{project.name.slice(0, 1).toUpperCase()}</span>
+                        <span className="project-row-main"><strong>{project.name}</strong><span title={project.repositoryUrl}>{project.repositoryUrl.replace(/^https?:\/\/(www\.)?/, "")}</span><span className={"project-trust-label " + (project.buildTrusted ? "project-trust-enabled" : "project-trust-disabled")}>{project.buildTrusted ? "Build trust enabled" : "Build trust off"}</span></span>
+                        <span className="row-chevron">›</span>
+                      </button>
+                    ))}
                   </div>
-                ) : (
-                  projects.map((project, index) => (
-                    <button
-                      key={project.id}
-                      className={"project-row " + (project.id === selectedProjectId ? "project-row-selected" : "")}
-                      onClick={() => setSelectedProjectId(project.id)}
-                    >
-                      <span className={"repo-avatar repo-avatar-" + (index % 4)}>{project.name.slice(0, 1).toUpperCase()}</span>
-                      <span className="project-row-main">
-                        <strong>{project.name}</strong>
-                        <span title={project.repositoryUrl}>{project.repositoryUrl.replace(/^https?:\/\/(www\.)?/, "")}</span>
-                        <span className={"project-trust-label " + (project.buildTrusted ? "project-trust-enabled" : "project-trust-disabled")}>
-                          {project.buildTrusted ? "Build trust enabled" : "Build trust off"}
-                        </span>
-                      </span>
-                      <span className="project-row-meta">{timeLabel(project.createdAt).split(",")[0]}</span>
-                      <span className="row-chevron">›</span>
-                    </button>
-                  ))
-                )}
-              </div>
-              <div className="panel-bottom"><span className="mini-live-dot" /> Synced with Foundry API <span className="bottom-spacer" /><button onClick={() => void refreshProjects()} className="subtle-action">Refresh ↻</button></div>
-            </article>
+                  <div className="card-footer"><span className="mini-live-dot" /> Synced with Foundry API <span className="bottom-spacer" /><span className="muted-small">{projects.length} registered</span></div>
+                </article>
 
-            <article className="panel deployment-panel" id="deployments">
-              <div className="panel-heading">
-                <div>
-                  <div className="section-kicker">RELEASE ACTIVITY</div>
-                  <h2>Deployments <span className="heading-count">{deployments.length}</span></h2>
-                  <p>{selectedProject ? "History for " + selectedProject.name : "Select a project to view releases."}</p>
-                </div>
-              </div>
+                <article className="surface-card project-inspector">
+                  {!selectedProject ? (
+                    <div className="empty-state"><div className="empty-illustration"><span>◇</span><i /><b /></div><strong>Select a project</strong><span>Repository settings and build trust will appear here.</span></div>
+                  ) : (
+                    <>
+                      <div className="section-kicker">PROJECT DETAILS</div>
+                      <div className="project-inspector-title"><span className="repo-avatar repo-avatar-0">{selectedProject.name.slice(0, 1).toUpperCase()}</span><div><h2>{selectedProject.name}</h2><span className={"project-trust-label " + (selectedProject.buildTrusted ? "project-trust-enabled" : "project-trust-disabled")}>{selectedProject.buildTrusted ? "Build trust enabled" : "Build trust off"}</span></div></div>
+                      <div className="inspector-field"><span>REPOSITORY</span><a href={selectedProject.repositoryUrl} target="_blank" rel="noreferrer">{selectedProject.repositoryUrl}<span> ↗</span></a></div>
+                      <div className="inspector-field"><span>REGISTERED</span><strong>{timeLabel(selectedProject.createdAt)}</strong></div>
+                      <div className={"trust-panel " + (selectedProject.buildTrusted ? "trust-panel-enabled" : "trust-panel-disabled")}>
+                        <div className="trust-panel-icon">{selectedProject.buildTrusted ? "✓" : "!"}</div><div><strong>{selectedProject.buildTrusted ? "Repository trusted" : "Build trust required"}</strong><p>{selectedProject.buildTrusted ? "Foundry can run this repository’s build and start scripts for local deployments." : "Trust this repository before running its build scripts. Registration alone does not authorize execution."}</p></div>
+                        <button type="button" className={"button " + (selectedProject.buildTrusted ? "button-quiet" : "button-primary")} onClick={() => void handleToggleBuildTrust()} disabled={updatingBuildTrust}>{updatingBuildTrust ? "Saving…" : selectedProject.buildTrusted ? "Revoke trust" : "Trust repository"}</button>
+                      </div>
+                      <button className="button button-primary full-width" onClick={() => navigate("deployments")}>Create deployment for this project <span>→</span></button>
+                    </>
+                  )}
+                </article>
+              </section>
+            </>
+          )}
 
-              {selectedProject && (
-                <div className={"project-trust-banner " + (selectedProject.buildTrusted ? "project-trust-banner-enabled" : "project-trust-banner-disabled")}>
-                  <div className="project-trust-banner-copy">
-                    <strong>{selectedProject.buildTrusted ? "Repository trusted for local builds" : "Repository build trust is off"}</strong>
-                    <p>{selectedProject.buildTrusted
-                      ? "Foundry may execute this repository's build and start scripts on this computer. Revoke trust to block future builds unless an administrator allowlists it."
-                      : "Trust this repository here to avoid manually editing the API allowlist. A configured administrator allowlist can still override this project setting."}</p>
-                  </div>
-                  <button
-                    type="button"
-                    className={"button " + (selectedProject.buildTrusted ? "button-quiet" : "button-primary")}
-                    onClick={() => void handleToggleBuildTrust()}
-                    disabled={updatingBuildTrust}
-                  >
-                    {updatingBuildTrust ? "Saving…" : selectedProject.buildTrusted ? "Revoke trust" : "Trust repository"}
-                  </button>
-                </div>
-              )}
+          {activeView === "deployments" && (
+            <>
+              <section className="page-heading-row">
+                <div><div className="eyebrow"><span className="eyebrow-line" />{viewLabels.deployments.eyebrow}</div><h1>Deployments</h1><p className="page-subtitle">{viewLabels.deployments.subtitle}</p></div>
+                <label className="project-picker"><span>PROJECT</span><select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)} disabled={projects.length === 0}><option value="">Select project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+              </section>
 
-              {selectedProject && (
-                <form className="deploy-form" onSubmit={handleCreateDeployment}>
-                  <div className="deploy-form-label"><span className="deploy-form-icon">↗</span><strong>New deployment</strong></div>
-                  <label className="source-ref-field">
-                    <span>Source ref</span>
-                    <input value={sourceRef} onChange={(event) => setSourceRef(event.target.value)} placeholder="main" maxLength={255} required />
-                  </label>
-                  <label className="source-ref-field service-path-field">
-                    <span>Service path (optional)</span>
-                    <input value={servicePath} onChange={(event) => setServicePath(event.target.value)} placeholder="Auto-detect or apps/api" maxLength={512} />
-                  </label>
-                  <button className="button button-primary deploy-button" type="submit" disabled={creatingDeployment}>
-                    {creatingDeployment ? "Queueing…" : "Deploy"} <span>→</span>
-                  </button>
-                </form>
-              )}
-
-              <div className="deployment-list">
-                {!selectedProject ? (
-                  <div className="empty-state compact-empty"><div className="empty-illustration"><span>↗</span><i /><b /></div><strong>No project selected</strong><span>Choose a project on the left to view its deployments.</span></div>
-                ) : loadingDeployments && deployments.length === 0 ? (
-                  <div className="empty-state compact-empty"><div className="loader" /><strong>Loading deployment history</strong></div>
-                ) : deployments.length === 0 ? (
-                  <div className="empty-state compact-empty"><div className="empty-illustration"><span>↗</span><i /><b /></div><strong>No deployments yet</strong><span>Queue your first deployment. Leave service path blank to auto-detect a single project.</span></div>
-                ) : deployments.map((deployment) => (
-                  <button
-                    key={deployment.id}
-                    className={"deployment-row " + (deployment.id === selectedDeploymentId ? "deployment-row-selected" : "")}
-                    onClick={() => setSelectedDeploymentId(deployment.id)}
-                  >
-                    <span className={"deployment-symbol deployment-symbol-" + deployment.status.toLowerCase().replace("_", "-")}>{deployment.status === "SUCCEEDED" ? "✓" : deployment.status === "FAILED" ? "!" : "↗"}</span>
-                    <span className="deployment-main">
-                      <span className="deployment-title">Release <b>#{shortId(deployment.id)}</b></span>
-                      <span className="deployment-meta"><span>{deployment.sourceRef}</span>{deployment.servicePath && <><i>·</i><span>{deployment.servicePath}</span></>}<i>·</i>{timeLabel(deployment.createdAt)}</span>
-                    </span>
-                    <StatusBadge status={deployment.status} />
-                    <span className="row-chevron">›</span>
-                  </button>
-                ))}
-              </div>
-              <div className="panel-bottom"><span className="mini-live-dot" /> Auto-refresh every 5 seconds <span className="bottom-spacer" /><span className="muted-small">{loadingDeployments ? "Refreshing…" : "Up to date"}</span></div>
-            </article>
-          </section>
-
-          <section className="panel log-panel" aria-label="Selected deployment details">
-            <div className="log-panel-heading">
-              <div>
-                <div className="section-kicker">OBSERVABILITY</div>
-                <h2>{selectedDeployment ? "Deployment details" : "Runtime logs"} <span className="heading-count">{logs.length}</span></h2>
-                <p>{selectedDeployment ? "Release #" + shortId(selectedDeployment.id) + " · " + selectedDeployment.sourceRepositoryUrl : "Select a deployment above to inspect status and logs."}</p>
-              </div>
-              {selectedDeployment && <StatusBadge status={selectedDeployment.status} />}
-            </div>
-
-            {selectedDeployment && (
-              <div className="deployment-detail-strip">
-                <div className="detail-item"><span>CREATED</span><strong>{timeLabel(selectedDeployment.createdAt)}</strong></div>
-                <div className="detail-item"><span>STARTED</span><strong>{timeLabel(selectedDeployment.startedAt)}</strong></div>
-                <div className="detail-item"><span>COMPLETED</span><strong>{timeLabel(selectedDeployment.completedAt)}</strong></div>
-                <div className={"detail-item runtime-state-item runtime-state-" + selectedDeployment.runtimeState.toLowerCase().replace("_", "-")}><span>RUNTIME</span><strong>{runtimeStateLabel(selectedDeployment.runtimeState)}</strong></div>
-                <div className="detail-item detail-url"><span>APPLICATION URL</span>
-                  {selectedDeployment.applicationUrl ? <a href={selectedDeployment.applicationUrl} target="_blank" rel="noreferrer">{selectedDeployment.applicationUrl}<span> ↗</span></a> : <strong className="no-url">Not available yet</strong>}
-                </div>
-              </div>
-            )}
-
-            {selectedDeployment?.failureReason && <div className="failure-reason"><strong>Failure reason</strong><span>{selectedDeployment.failureReason}</span></div>}
-
-            {selectedDeployment?.status === "QUEUED" && (
-              <div className="queue-note">
-                <span className="queue-note-icon">i</span>
-                <span><strong>Deployment is queued.</strong> Foundry will only execute repository builds for projects with Build trust enabled or repositories explicitly trusted by the local administrator.</span>
-              </div>
-            )}
-
-            <div className="logs-toolbar">
-              <div className="logs-toolbar-left"><span className="terminal-glyph">⌁</span><strong>Build &amp; runtime output</strong><span className="logs-count">{logs.length} entries</span></div>
-              <span className="logs-polling"><span className="mini-live-dot" /> Live polling</span>
-            </div>
-
-            <div className="terminal">
-              {!selectedDeployment ? (
-                <div className="terminal-empty"><span className="terminal-prompt">$</span> Select a deployment to inspect its event stream<span className="terminal-cursor" /></div>
-              ) : logs.length === 0 && loadingLogs ? (
-                <div className="terminal-empty"><span className="terminal-prompt">$</span> Loading deployment events…</div>
-              ) : logs.length === 0 ? (
-                <div className="terminal-empty"><span className="terminal-prompt">$</span> No logs yet. Events will appear here as the worker processes this deployment.<span className="terminal-cursor" /></div>
+              {!selectedProject ? (
+                <section className="surface-card empty-page-card"><div className="empty-illustration"><span>↗</span><i /><b /></div><h2>Choose a project to deploy</h2><p>Register a repository first. Each deployment belongs to a project so its build history stays organized.</p><button className="button button-primary" onClick={openNewProject}>＋ Create project</button></section>
               ) : (
-                <div className="terminal-lines">
-                  {logs.map((entry) => (
-                    <div className="terminal-line" key={entry.id}>
-                      <span className="log-sequence">{String(entry.sequenceNumber).padStart(3, "0")}</span>
-                      <span className="log-time">{new Date(entry.timestamp).toLocaleTimeString([], { hour12: false })}</span>
-                      <span className={"log-stage log-stage-" + entry.stage.toLowerCase().replace("_", "-")}>{entry.stage}</span>
-                      <span className={"log-level log-level-" + entry.severity.toLowerCase()}>{entry.severity}</span>
-                      <span className="log-message">{entry.message}</span>
+                <>
+                  {!selectedProject.buildTrusted && (
+                    <div className="trust-callout"><span className="queue-note-icon">!</span><div><strong>Build trust is off for {selectedProject.name}</strong><p>Foundry will refuse to execute repository scripts until you trust this repository. Review the source and enable trust in Projects.</p></div><button className="button button-quiet" onClick={() => navigate("projects")}>Project settings</button></div>
+                  )}
+                  <form className="surface-card deployment-create-card" id="deployment-create-form" onSubmit={handleCreateDeployment}>
+                    <div className="card-heading"><div><div className="section-kicker">NEW RELEASE</div><h2>Deploy {selectedProject.name}</h2><p>Build a commit or branch into a runnable application.</p></div><span className="deploy-form-icon">↗</span></div>
+                    <div className="deployment-form-grid">
+                      <label className="field-label">Source ref<input value={sourceRef} onChange={(event) => setSourceRef(event.target.value)} placeholder="main" maxLength={255} required /></label>
+                      <label className="field-label">Service path <span className="field-hint">Optional · for monorepos</span><input value={servicePath} onChange={(event) => setServicePath(event.target.value)} placeholder="Leave blank to auto-detect" maxLength={512} /></label>
+                      <button className="button button-primary deploy-button" type="submit" disabled={creatingDeployment || !selectedProject.buildTrusted}>{creatingDeployment ? "Queueing…" : "Deploy now"} <span>→</span></button>
                     </div>
-                  ))}
-                  {logsHasMore && <div className="logs-more-note">Showing the first page of events. Additional older entries are available from the logs API.</div>}
-                  <div className="terminal-tail"><span className="terminal-prompt">$</span> Listening for new events<span className="terminal-cursor" /></div>
-                </div>
+                    <div className="form-helper"><span className="mini-live-dot" /> Build, image packaging, startup, and health checks will appear under Build &amp; Runtime.</div>
+                  </form>
+                </>
               )}
-            </div>
-            <div className="log-footer"><span>SEQUENCE CURSOR</span><strong>{lastLogSequence.current.toString().padStart(3, "0")}</strong><span className="footer-divider" /><span>API SOURCE</span><code>/api/v1/deployments/{selectedDeployment ? shortId(selectedDeployment.id) : "{id}"}/logs</code><span className="bottom-spacer" />{loadingLogs && <span className="muted-small">Refreshing…</span>}
-            </div>
-          </section>
+
+              <section className="surface-card deployment-history-card">
+                <div className="card-heading"><div><div className="section-kicker">RELEASE ACTIVITY</div><h2>Deployment history <span className="heading-count">{deployments.length}</span></h2><p>{selectedProject ? "History for " + selectedProject.name : "Select a project to load its deployment history."}</p></div><button className="text-action" onClick={() => setDeploymentQuery("")}>Clear filters</button></div>
+                <div className="history-toolbar">
+                  <label className="search-field"><span>⌕</span><input value={deploymentQuery} onChange={(event) => setDeploymentQuery(event.target.value)} placeholder="Search release ID, ref, path…" aria-label="Search deployments" /></label>
+                  <label className="filter-select"><span>STATUS</span><select value={deploymentStatusFilter} onChange={(event) => setDeploymentStatusFilter(event.target.value)}><option value="ALL">All statuses</option><option value="QUEUED">Queued</option><option value="BUILDING">Building</option><option value="STARTING">Starting</option><option value="HEALTH_CHECK">Health check</option><option value="SUCCEEDED">Succeeded</option><option value="FAILED">Failed</option></select></label>
+                </div>
+                <div className="deployment-list">
+                  {!selectedProject ? <div className="empty-state"><strong>No project selected</strong><span>Choose a project above to see its releases.</span></div>
+                  : loadingDeployments && deployments.length === 0 ? <div className="empty-state"><div className="loader" /><strong>Loading deployment history</strong></div>
+                  : filteredDeployments.length === 0 ? <div className="empty-state"><strong>No matching deployments</strong><span>Change the search or status filter, or start a new deployment.</span></div>
+                  : filteredDeployments.map((deployment) => (
+                    <button key={deployment.id} className={"deployment-row " + (deployment.id === selectedDeploymentId ? "deployment-row-selected" : "")} onClick={() => openDeployment(deployment.id)}>
+                      <span className={"deployment-symbol deployment-symbol-" + deployment.status.toLowerCase().replace(/_/g, "-")}>{deployment.status === "SUCCEEDED" ? "✓" : deployment.status === "FAILED" ? "!" : "↗"}</span>
+                      <span className="deployment-main"><span className="deployment-title">Release <b>#{shortId(deployment.id)}</b></span><span className="deployment-meta"><span>{deployment.sourceRef}</span>{deployment.servicePath && <><i>·</i><span>{deployment.servicePath}</span></>}<i>·</i>{timeLabel(deployment.createdAt)}</span></span>
+                      <StatusBadge status={deployment.status} /><span className="row-chevron">›</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="card-footer"><span className="mini-live-dot" /> Auto-refresh every 5 seconds <span className="bottom-spacer" /><span className="muted-small">{filteredDeployments.length} of {deployments.length} shown</span></div>
+              </section>
+            </>
+          )}
+
+          {activeView === "build-runtime" && (
+            <>
+              <section className="page-heading-row">
+                <div><div className="eyebrow"><span className="eyebrow-line" />{viewLabels["build-runtime"].eyebrow}</div><h1>Build &amp; Runtime</h1><p className="page-subtitle">{selectedDeployment ? "Release #" + shortId(selectedDeployment.id) + " · " + selectedDeployment.sourceRepositoryUrl : viewLabels["build-runtime"].subtitle}</p></div>
+                <div className="heading-actions"><button className="button button-quiet" onClick={() => navigate("deployments")}>← All deployments</button>{selectedDeployment && <StatusBadge status={selectedDeployment.status} />}</div>
+              </section>
+
+              {!selectedDeployment ? (
+                <section className="surface-card empty-page-card"><div className="empty-illustration"><span>⌁</span><i /><b /></div><h2>Select a release to inspect</h2><p>Choose any deployment from history to inspect its build stages, health check, application URL, and runtime logs.</p><button className="button button-primary" onClick={() => navigate("deployments")}>Open deployments <span>→</span></button></section>
+              ) : (
+                <>
+                  <section className="runtime-summary-grid">
+                    <article className="surface-card runtime-summary-main">
+                      <div className="runtime-summary-top"><div><div className="section-kicker">SELECTED RELEASE</div><h2>Release <span className="release-id">#{shortId(selectedDeployment.id)}</span></h2><p>{selectedDeployment.sourceRef}{selectedDeployment.servicePath ? " · " + selectedDeployment.servicePath : " · repository root"}</p></div><StatusBadge status={selectedDeployment.status} /></div>
+                      <div className="deployment-detail-strip">
+                        <div className="detail-item"><span>CREATED</span><strong>{timeLabel(selectedDeployment.createdAt)}</strong></div>
+                        <div className="detail-item"><span>STARTED</span><strong>{timeLabel(selectedDeployment.startedAt)}</strong></div>
+                        <div className="detail-item"><span>COMPLETED</span><strong>{timeLabel(selectedDeployment.completedAt)}</strong></div>
+                        <div className={"detail-item runtime-state-item runtime-state-" + selectedDeployment.runtimeState.toLowerCase().replace(/_/g, "-")}><span>RUNTIME</span><strong>{runtimeStateLabel(selectedDeployment.runtimeState)}</strong></div>
+                      </div>
+                      {selectedDeployment.failureReason && <div className="failure-reason"><strong>Failure reason</strong><span>{selectedDeployment.failureReason}</span></div>}
+                      {selectedDeployment.status === "QUEUED" && <div className="queue-note"><span className="queue-note-icon">i</span><span><strong>Deployment is queued.</strong> Foundry will execute repository builds only for trusted projects or administrator-allowlisted repositories.</span></div>}
+                    </article>
+                    <article className="surface-card application-card">
+                      <div className="section-kicker">LIVE APPLICATION</div>
+                      <h2>{selectedDeployment.runtimeState === "RUNNING" ? "Your app is running" : selectedDeployment.status === "FAILED" ? "Deployment needs attention" : "Waiting for a live URL"}</h2>
+                      <p>{selectedDeployment.runtimeState === "RUNNING" ? "The runtime is available through Foundry’s local preview router." : "The URL becomes available after a supported application starts and passes its health check."}</p>
+                      {selectedDeployment.applicationUrl ? <a className="application-link" href={selectedDeployment.applicationUrl} target="_blank" rel="noreferrer"><span>{selectedDeployment.applicationUrl}</span><span>↗</span></a> : <div className="application-link-disabled">URL not available yet</div>}
+                      {selectedDeployment.applicationUrl && <a className="button button-primary full-width application-open-button" href={selectedDeployment.applicationUrl} target="_blank" rel="noreferrer">Open application <span>↗</span></a>}
+                    </article>
+                  </section>
+
+                  <section className="surface-card build-timeline-card">
+                    <div className="card-heading"><div><div className="section-kicker">PIPELINE STATUS</div><h2>Build to runtime</h2><p>Each stage emits logs below. A deployment is successful only after health check passes.</p></div><span className="logs-polling"><span className="mini-live-dot" /> Live updates</span></div>
+                    <div className="stage-timeline">
+                      {[
+                        { title: "Checkout & build", detail: "Repository fetch, dependency install, tests, and compilation", stage: "BUILD" },
+                        { title: "Package image", detail: "Build the runtime image from the prepared artifact", stage: "BUILD" },
+                        { title: "Start application", detail: "Create the constrained runtime and begin log capture", stage: "STARTUP" },
+                        { title: "Health check", detail: "Verify the application responds over HTTP", stage: "HEALTH_CHECK" }
+                      ].map((step, index) => {
+                        const relevantLogs = logs.filter((entry) => entry.stage === step.stage);
+                        const stageDone = selectedDeployment.status === "SUCCEEDED"
+                          || (index === 0 && logs.some((entry) => entry.stage === "BUILD" && entry.severity === "INFO"))
+                          || (index === 1 && logs.some((entry) => entry.message.toLowerCase().includes("naming to docker.io") || entry.message.toLowerCase().includes("image built")))
+                          || (index === 2 && logs.some((entry) => entry.message.toLowerCase().includes("started docker container")))
+                          || (index === 3 && logs.some((entry) => entry.message.toLowerCase().includes("health check passed")));
+                        const stageFailed = selectedDeployment.status === "FAILED" && !stageDone && (index === 0 || index === 1 || index === 2 || index === 3);
+                        return <div className={"stage-card " + (stageFailed ? "stage-failed" : stageDone ? "stage-done" : "stage-waiting")} key={step.title}>
+                          <span className="stage-number">{stageFailed ? "!" : stageDone ? "✓" : String(index + 1).padStart(2, "0")}</span>
+                          <div><strong>{step.title}</strong><p>{step.detail}</p><small>{stageFailed ? "Failed" : stageDone ? "Activity recorded" : relevantLogs.length ? "In progress" : "Waiting"}</small></div>
+                        </div>;
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="surface-card log-panel">
+                    <div className="log-panel-heading"><div><div className="section-kicker">OBSERVABILITY</div><h2>Build &amp; runtime output <span className="heading-count">{logs.length}</span></h2><p>Command output, image build events, container logs, and health-check results.</p></div><span className="logs-polling"><span className="mini-live-dot" /> Live polling</span></div>
+                    <div className="logs-toolbar"><div className="logs-toolbar-left"><span className="terminal-glyph">⌁</span><strong>Event stream</strong><span className="logs-count">{logs.length} entries</span></div><span className="logs-polling"><span className="mini-live-dot" /> Refreshes every 5s</span></div>
+                    <div className="terminal">
+                      {logs.length === 0 && loadingLogs ? <div className="terminal-empty"><div className="loader" /><span>Loading deployment events…</span></div>
+                      : logs.length === 0 ? <div className="terminal-empty"><span className="terminal-prompt">$</span>No logs yet. Events appear as the worker processes the deployment.<span className="terminal-cursor" /></div>
+                      : <div className="terminal-lines">
+                        {logs.map((entry) => <div className="terminal-line" key={entry.id}>
+                          <span className="log-sequence">{String(entry.sequenceNumber).padStart(3, "0")}</span>
+                          <span className="log-time">{new Date(entry.timestamp).toLocaleTimeString([], { hour12: false })}</span>
+                          <span className={"log-stage log-stage-" + entry.stage.toLowerCase().replace(/_/g, "-")}>{entry.stage}</span>
+                          <span className={"log-level log-level-" + entry.severity.toLowerCase()}>{entry.severity}</span>
+                          <span className="log-message">{entry.message}</span>
+                        </div>)}
+                        {logsHasMore && <div className="logs-more-note">More events are available from the paginated logs API.</div>}
+                        <div className="terminal-tail"><span className="terminal-prompt">$</span> Listening for new events<span className="terminal-cursor" /></div>
+                      </div>}
+                    </div>
+                    <div className="log-footer"><span>SEQUENCE CURSOR</span><strong>{lastLogSequence.current.toString().padStart(3, "0")}</strong><span className="footer-divider" /><span>API SOURCE</span><code>/api/v1/deployments/{selectedDeployment.id}/logs</code><span className="bottom-spacer" />{loadingLogs && <span className="muted-small">Refreshing…</span>}</div>
+                  </section>
+                </>
+              )}
+            </>
+          )}
 
           <footer className="page-footer"><span>FOUNDRY <b>•</b> LOCAL PREVIEW</span><span>Built for developers who ship.</span><span>API <b>·</b> Spring Boot <b>·</b> React</span></footer>
         </div>
