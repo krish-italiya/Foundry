@@ -10,13 +10,12 @@ interface OverviewPageProps {
   loadingDeployments: boolean;
   onAddProject: () => void;
   onOpenProject: (project: Project) => void;
-  onViewProjects: () => void;
   onOpenDeployment: (deployment: Deployment) => void;
 }
 
 export default function OverviewPage({
   projects, selectedProject, deployments, loadingProjects, loadingDeployments,
-  onAddProject, onOpenProject, onViewProjects, onOpenDeployment
+  onAddProject, onOpenProject, onOpenDeployment
 }: OverviewPageProps) {
   const succeeded = deployments.filter((deployment) => deployment.status === "SUCCEEDED").length;
   const failed = deployments.filter((deployment) => deployment.status === "FAILED").length;
@@ -50,7 +49,7 @@ export default function OverviewPage({
             {selectedProject && <button className="text-action" onClick={() => onOpenProject(selectedProject)}>Open project workspace <span>→</span></button>}
           </div>
           <div className="recent-list">
-            {!selectedProject ? <div className="empty-state"><strong>No project selected</strong><span>Open a project to see deployment activity.</span><button className="text-action" onClick={onViewProjects}>Browse projects <span>→</span></button></div>
+            {!selectedProject ? <div className="empty-state"><strong>No project selected</strong><span>Add a repository to start tracking its releases.</span></div>
             : loadingDeployments && deployments.length === 0 ? <div className="empty-state"><div className="loader" /><strong>Loading deployment history</strong></div>
             : recent.length === 0 ? <div className="empty-state"><div className="empty-illustration"><span>↗</span><i /><b /></div><strong>No deployments yet</strong><span>Create the first deployment inside this project's workspace.</span><button className="text-action" onClick={() => onOpenProject(selectedProject)}>Open project <span>→</span></button></div>
             : recent.map((deployment) => (
@@ -65,14 +64,6 @@ export default function OverviewPage({
         </article>
 
         <div className="overview-side-column">
-          <article className="surface-card quickstart-card">
-            <div className="section-kicker">YOUR PROJECTS</div><h2>Where do you want to go?</h2>
-            <p>{projects.length === 0 ? "Connect a repository and start your first build." : selectedProject ? "Deployment history, build output, and runtime controls are grouped inside each project workspace." : "Open a project to view its releases and logs."}</p>
-            <div className="quickstart-actions">
-              <button className="button button-primary" onClick={onViewProjects}>{projects.length === 0 ? "Create project" : "Browse projects"} <span>→</span></button>
-              {selectedProject && <button className="button button-quiet" onClick={() => onOpenProject(selectedProject)}>Open selected project</button>}
-            </div>
-          </article>
           <article className="surface-card pipeline-card">
             <div className="section-kicker">DEPLOYMENT FLOW</div><h2>From repo to runtime</h2>
             <div className="pipeline-steps">
@@ -83,7 +74,7 @@ export default function OverviewPage({
           </article>
           {projects.length > 0 && (
             <article className="surface-card overview-projects-card">
-              <div className="card-heading"><div><div className="section-kicker">WORKSPACE</div><h2>Projects</h2><p>Recently registered repositories.</p></div><button className="text-action" onClick={onViewProjects}>View all <span>→</span></button></div>
+              <div className="card-heading"><div><div className="section-kicker">WORKSPACE</div><h2>Projects</h2><p>Recently registered repositories.</p></div></div>
               {projects.slice(0, 3).map((project, index) => (
                 <button className="project-row" key={project.id} onClick={() => onOpenProject(project)}>
                   <span className={"repo-avatar repo-avatar-" + (index % 4)}>{project.name.slice(0, 1).toUpperCase()}</span>
