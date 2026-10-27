@@ -85,7 +85,7 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 
 ## Next milestone
 
-Finish and locally verify runtime lifecycle reconciliation, then evaluate an isolated runtime worker. Runtime monitoring improves diagnosis but does not restart applications or sandbox them. Do not run arbitrary repositories or expose workloads publicly before isolation, access control, and resource limits are designed.
+Finish the Docker runtime review and verify the redesigned multi-view dashboard on Windows. Test at least one Node service and one static Vite frontend, then validate container lifecycle cleanup. Runtime monitoring improves diagnosis but does not restart applications or sandbox builds. Do not run arbitrary repositories or expose workloads publicly before an isolated build boundary, credential controls, authentication/authorization, quotas, and public TLS/DNS ingress are implemented.
 
 
 Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
