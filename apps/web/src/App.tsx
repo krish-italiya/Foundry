@@ -147,7 +147,6 @@ function App() {
   const selectedDeployment = deployments.find((deployment) => deployment.id === selectedDeploymentId);
   const succeededCount = deployments.filter((item) => item.status === "SUCCEEDED").length;
   const failedCount = deployments.filter((item) => item.status === "FAILED").length;
-  const runningCount = deployments.filter((item) => item.runtimeState === "RUNNING").length;
   const filteredDeployments = deployments.filter((deployment) => {
     const query = deploymentQuery.trim().toLowerCase();
     const matchesQuery = !query
@@ -658,7 +657,7 @@ function App() {
                   {!selectedProject ? <div className="empty-state"><strong>No project selected</strong><span>Choose a project above to see its releases.</span></div>
                   : loadingDeployments && deployments.length === 0 ? <div className="empty-state"><div className="loader" /><strong>Loading deployment history</strong></div>
                   : filteredDeployments.length === 0 ? <div className="empty-state"><strong>No matching deployments</strong><span>Change the search or status filter, or start a new deployment.</span></div>
-                  : filteredDeployments.map((deployment) => (
+                  : visibleDeployments.map((deployment) => (
                     <button key={deployment.id} className={"deployment-row " + (deployment.id === selectedDeploymentId ? "deployment-row-selected" : "")} onClick={() => openDeployment(deployment.id)}>
                       <span className={"deployment-symbol deployment-symbol-" + deployment.status.toLowerCase().replace(/_/g, "-")}>{deployment.status === "SUCCEEDED" ? "✓" : deployment.status === "FAILED" ? "!" : "↗"}</span>
                       <span className="deployment-main"><span className="deployment-title">Release <b>#{shortId(deployment.id)}</b></span><span className="deployment-meta"><span>{deployment.sourceRef}</span>{deployment.servicePath && <><i>·</i><span>{deployment.servicePath}</span></>}<i>·</i>{timeLabel(deployment.createdAt)}</span></span>
