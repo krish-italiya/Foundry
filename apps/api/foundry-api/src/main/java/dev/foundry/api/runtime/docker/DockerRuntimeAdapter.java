@@ -131,6 +131,10 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
         if (!startingDeployments.add(deploymentId)) {
             throw new IllegalStateException("Docker startup is already in progress for this deployment.");
         }
+        if (shuttingDown) {
+            startingDeployments.remove(deploymentId);
+            throw new IOException("Docker runtime is shutting down; new deployments are not accepted.");
+        }
         if (containers.containsKey(deploymentId)) {
             startingDeployments.remove(deploymentId);
             throw new IllegalStateException("A Docker container is already tracked for this deployment.");
