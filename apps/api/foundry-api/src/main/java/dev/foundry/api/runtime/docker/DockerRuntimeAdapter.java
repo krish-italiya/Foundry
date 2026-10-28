@@ -274,10 +274,13 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
             cleanupPending.add(deploymentId);
         }
 
-        // These directories are host-side build inputs, not mounted container volumes.
-        deleteTreeQuietly(contextRoot.resolve(deploymentId.toString()).normalize(), "runtime build context");
-        deleteTreeQuietly(buildWorkspaceRoot.resolve(deploymentId.toString()).normalize(),
-                "repository build workspace");
+        // A concurrent build may still be reading its context. Its finally block owns
+        // workspace deletion once startup exits; the next startup sweeper handles a hard crash.
+        if (!startingDeployments.contains(deploymentId)) {
+            deleteTreeQuietly(contextRoot.resolve(deploymentId.toString()).normalize(), "runtime build context");
+            deleteTreeQuietly(buildWorkspaceRoot.resolve(deploymentId.toString()).normalize(),
+                    "repository build workspace");
+        }
     }
 
     private void stopLogFollower(UUID deploymentId) {
