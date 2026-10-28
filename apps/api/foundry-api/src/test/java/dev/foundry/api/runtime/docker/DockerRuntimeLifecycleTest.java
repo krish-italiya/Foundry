@@ -46,6 +46,7 @@ class DockerRuntimeLifecycleTest {
 
         assertThat(runtime.containerRemovalAttempts()).isEqualTo(1);
         assertThat(runtime.imageRemovalAttempts()).isZero();
+        assertThat(runtime.processAlive(deploymentId)).contains(true);
 
         runtime.containerRemovalResults.add(new DockerRuntimeAdapter.CommandResult(0, ""));
 
