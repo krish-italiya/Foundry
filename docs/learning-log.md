@@ -479,3 +479,9 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - The lifecycle monitor was renamed/moved from `runtime/local/LocalRuntimeLifecycleMonitor` to the shared `runtime/RuntimeLifecycleMonitor`, since it now handles either managed runtime adapter.
 - Added tests for strict deterministic container-name parsing, orphan resource cleanup, retrying failed container removal, safe failure transition of in-progress deployment statuses, lifecycle recovery behavior, and worker poller startup gating.
 - Verification status: source-level review completed, but the latest lifecycle suite has **not yet been executed locally**. Expected backend test count is 70 if the existing 59 tests plus the new tests are all discovered; use the actual Maven summary as authoritative.
+
+
+### Windows CI verification workflow (2026-10-28)
+- Added `.github/workflows/verify.yml` on the feature branch. Pull requests targeting `main` and pushes to `main` run on `windows-latest` with Java 25 and Node.js 22, then execute the full Maven test suite and `npm ci` + `npm run build`.
+- The workflow has read-only repository permissions, cancels superseded runs for the same ref, and is designed to catch the Windows-specific build/test behavior used in local development.
+- Workflow execution status is pending at commit time; don't treat the CI gate as passed until a run reports success.
