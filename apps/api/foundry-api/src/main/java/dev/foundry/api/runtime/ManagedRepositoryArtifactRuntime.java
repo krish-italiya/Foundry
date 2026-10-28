@@ -15,8 +15,9 @@ public interface ManagedRepositoryArtifactRuntime extends RepositoryArtifactRunt
     Optional<URI> internalApplicationUrl(UUID deploymentId);
 
     /**
-     * @return empty when the runtime is not tracked by this control-plane process or
-     * liveness cannot currently be confirmed; otherwise whether its process/container is alive.
+     * @return empty when the runtime is not tracked by this control-plane process; otherwise
+     * whether its process/container is alive. A Docker liveness query that cannot be confirmed
+     * is treated as alive until a cleanup retry resolves the uncertainty.
      */
     Optional<Boolean> processAlive(UUID deploymentId);
 }
