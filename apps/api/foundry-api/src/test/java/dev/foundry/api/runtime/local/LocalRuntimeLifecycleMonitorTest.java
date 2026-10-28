@@ -37,6 +37,38 @@ class LocalRuntimeLifecycleMonitorTest {
         when(deployment.getId()).thenReturn(deploymentId);
         when(repository.findAllByStatusOrderByCreatedAtAsc(DeploymentStatus.SUCCEEDED))
                 .thenReturn(List.of(deployment));
+        when(repository.findAllByStatusOrderByCreatedAtAsc(DeploymentStatus.BUILDING))
+                .thenReturn(List.of());
+        when(repository.findAllByStatusOrderByCreatedAtAsc(DeploymentStatus.STARTING))
+                .thenReturn(List.of());
+        when(repository.findAllByStatusOrderByCreatedAtAsc(DeploymentStatus.HEALTH_CHECK))
+                .thenReturn(List.of());
+    }
+
+    @Test
+    void startupRecoveryFailsStrandedBuildAndCleansItsRuntimeBeforeWorkerResumes() {
+        UUID strandedId = UUID.randomUUID();
+        DeploymentEntity stranded = mock(DeploymentEntity.class);
+        when(stranded.getId()).thenReturn(strandedId);
+        when(repository.findAllByStatusOrderByCreatedAtAsc(DeploymentStatus.BUILDING))
+                .thenReturn(List.of(stranded));
+        when(executionService.failIfInProgress(
+                eq(strandedId), contains("Foundry restarted before deployment completed")))
+                .thenReturn(true);
+        when(runtime.processAlive(deploymentId)).thenReturn(Optional.of(true));
+
+        monitor.reconcileAfterStartup();
+
+        verify(executionService).failIfInProgress(
+                eq(strandedId), contains("Foundry restarted before deployment completed"));
+        verify(runtime).stop(strandedId);
+        verify(runtime, never()).stop(deploymentId);
+        verify(logService).append(
+                strandedId,
+                DeploymentLogStage.WORKER,
+                DeploymentLogStream.DEPLOYMENT,
+                DeploymentLogSeverity.WARN,
+                "Foundry restarted while deployment was BUILDING; marked FAILED and cleaned up its runtime.");
     }
 
     @Test
