@@ -59,20 +59,21 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 - React + TypeScript + Vite dashboard in `apps/web`, organized into domain types, an API client, a workspace state hook, reusable components, separate pages, and layered stylesheets. Navigation is project-centered: Overview → Projects → a selected project's Overview, Deployments, and Build & Runtime tabs.
 - Deployment history is scoped to the selected project and includes text/status filters and eight-item pagination. A separate Ionic React/Vite frontend has also successfully built and served through Foundry's static Docker runtime path.
 
-**Repository build pipeline (tested locally; current onboarding changes are on `feat/npm-lockfile-fallback` and still need a fresh verification run):**
+**Repository build pipeline (existing build workflow):**
 - Checkout of an explicitly selected HTTPS GitHub repository/ref into a disposable workspace.
 - Manifest discovery for Maven `pom.xml` and npm `package.json`; optional service path for monorepos.
 - Maven `verify`; supports executable Spring Boot JARs and ordinary runnable JARs with a `Main-Class` manifest entry.
 - npm prefers `npm ci` when `package-lock.json` or `npm-shrinkwrap.json` exists; otherwise it warns and falls back to `npm install`. Configured tests and builds run when available.
+- The new opt-in isolated builder path is being developed on `feat/isolated-builder-containers`. When enabled, Maven/npm commands run in a resource-limited Docker builder with a read-only root filesystem, a size-limited temporary workspace, no host bind mounts, and no Docker socket. Checkout and manifest discovery still occur on the host; only runtime-relevant outputs are copied back. End-to-end verification is pending.
 - Persisted command stdout/stderr and exit-code log entries with per-command timeouts.
 - Launch of supported Java JARs or npm `preview`/`start` scripts, followed by a real health check.
 - Per-project build trust is explicitly opt-in in the dashboard, stored in the local database, and can be revoked. The administrator allowlist remains an optional local override.
 - A local ingress filter gives active deployments stable `http://{deployment-id}.localhost:8080` URLs and proxies requests to their private loopback ports. This is for local development, not public hosting.
 - Runtime state is tracked separately from the initial deployment result. A local monitor identifies exited applications as `CRASHED` and successful records whose process is no longer tracked after a Foundry restart as `INTERRUPTED`. It detects failures but does not restart workloads.
 
-**Safe defaults:** `foundry.build.enabled=false`, `foundry.build.allowed-repositories=`, `foundry.worker.enabled=false`, `foundry.runtime.local.enabled=false`, `foundry.runtime.docker.enabled=false`, and `foundry.runtime.local.sample-mode-enabled=false`. Enable these deliberately for a local demonstration. Registering a URL alone does not authorize running its scripts; trust it explicitly in the dashboard or use the local administrator allowlist.
+**Safe defaults:** `foundry.build.enabled=false`, `foundry.build.container.enabled=false`, `foundry.build.allowed-repositories=`, `foundry.worker.enabled=false`, `foundry.runtime.local.enabled=false`, `foundry.runtime.docker.enabled=false`, and `foundry.runtime.local.sample-mode-enabled=false`. Enable these deliberately for a local demonstration. Registering a URL alone does not authorize running its scripts; trust it explicitly in the dashboard or use the local administrator allowlist.
 
-**Important boundary:** repository builds execute source-repository scripts on the local host. Project trust is an explicit local consent/authorization step, not a sandbox. Do not expose this runner publicly or execute untrusted repositories until isolated build/runtime workers, credential boundaries, resource limits, authentication, and access controls exist. The local ingress uses `.localhost` subdomains and forwards to loopback-published local processes/containers; it is not Internet ingress. Process routing state is in memory, so restarting the API stops local workloads and their old URLs become unavailable.
+**Important boundary:** when isolated builder mode is disabled, repository build scripts execute on the local host. When enabled, Maven/npm commands run in a separate constrained container, but checkout and manifest discovery remain on the host and build containers have network access to download dependencies. Build trust is an authorization gate, not a complete sandbox. Do not expose this runner publicly or execute untrusted repositories until isolation, credential boundaries, egress policy, resource limits, authentication, and access controls exist. The local ingress uses `.localhost` subdomains and forwards to loopback-published local processes/containers; it is not Internet ingress. Process routing state is in memory, so restarting the API stops local workloads and their old URLs become unavailable.
 
 ## Build principles
 
@@ -86,10 +87,10 @@ Foundry currently has a React + TypeScript dashboard and a Spring Boot API. The 
 
 ## Next milestone
 
-The Docker runtime has successfully deployed a trusted Express service and a separate Ionic React/Vite frontend on Windows. The project-scoped dashboard build and manual navigation checks passed. The new lifecycle recovery changeset also passed Windows CI at commit `bca66469`: **70 backend tests, 0 failures, 0 errors, 0 skipped**, followed by `npm ci` and a successful Vite production build ([workflow run](https://github.com/krish-italiya/Foundry/actions/runs/40740356945)). The remaining acceptance check is a live Docker shutdown/restart and cleanup-retry exercise on the development machine. Runtime monitoring improves diagnosis but does not restart applications or sandbox builds. Do not expose workloads publicly before an isolated build boundary, credential controls, authentication/authorization, quotas, and public TLS/DNS ingress are implemented.
+The Docker runtime has successfully deployed a trusted Express service and a separate Ionic React/Vite frontend on Windows. The project-scoped dashboard build and manual navigation checks passed. The lifecycle recovery changeset passed Windows CI at commit `bca66469`: **70 backend tests, 0 failures, 0 errors, 0 skipped**, followed by `npm ci` and a successful Vite production build ([workflow run](https://github.com/krish-italiya/Foundry/actions/runs/40740356945)). Live lifecycle checks and isolated-builder verification are still in progress. Track build isolation in [Issue #14](https://github.com/krish-italiya/Foundry/issues/14); don't expose workloads publicly until isolation, credential controls, authentication/authorization, quotas, egress policy, and public TLS/DNS ingress are implemented.
 
 
-Track the V1 scope and progress in [Issue #1: Define Foundry v1 scope and architecture](https://github.com/krish-italiya/Foundry/issues/1).
+The original V1 scope discussion is archived in [closed Issue #1](https://github.com/krish-italiya/Foundry/issues/1). Current Docker-runtime acceptance is tracked in [Issue #12](https://github.com/krish-italiya/Foundry/issues/12), and isolated-build work in [Issue #14](https://github.com/krish-italiya/Foundry/issues/14).
 
 ## License
 
