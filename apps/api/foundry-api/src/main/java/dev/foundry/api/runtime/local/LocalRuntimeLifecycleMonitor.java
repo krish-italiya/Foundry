@@ -39,6 +39,7 @@ public class LocalRuntimeLifecycleMonitor {
     private final DeploymentExecutionService executionService;
     private final ManagedRepositoryArtifactRuntime runtime;
     private final DeploymentLogService deploymentLogService;
+    private volatile boolean startupRecoveryComplete;
 
     public LocalRuntimeLifecycleMonitor(
             DeploymentRepository deploymentRepository,
@@ -59,10 +60,12 @@ public class LocalRuntimeLifecycleMonitor {
     public void reconcileAfterStartup() {
         recoverInterruptedDeployments();
         reconcile();
+        startupRecoveryComplete = true;
     }
 
     @Scheduled(fixedDelayString = "${foundry.runtime.local.monitor-interval-ms:5000}")
     public void reconcilePeriodically() {
+        if (!startupRecoveryComplete) return;
         // Periodic monitoring only observes successful runtimes. In-progress deployment
         // recovery is startup-only so this monitor never kills a live build.
         reconcile();
@@ -107,7 +110,7 @@ public class LocalRuntimeLifecycleMonitor {
                     DeploymentLogStream.DEPLOYMENT,
                     DeploymentLogSeverity.WARN,
                     "Foundry restarted while deployment was " + previousStatus
-                            + "; marked FAILED and cleaned up its runtime.");
+                            + "; marked FAILED and requested runtime cleanup.");
         } catch (RuntimeException recoveryFailure) {
             // One stale deployment must not prevent the remaining startup recovery.
             log.warn("Could not recover interrupted deployment {}", deploymentId, recoveryFailure);
