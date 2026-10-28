@@ -57,11 +57,11 @@ The user reported that project navigation, project-level tabs, deployment search
 
 ## Immediate next steps
 
-1. Pull the latest \`origin/feat/docker-runtime-adapter\` before editing.
-2. Inspect \`DockerRuntimeAdapter\` and \`LocalRuntimeLifecycleMonitor\` for stop/cleanup, stale container handling, daemon-down behavior, and API restart reconciliation. Add meaningful regression/integration tests rather than only string assertions.
-3. With Docker Desktop running, validate a real container can be stopped/removed and confirm expected persisted runtime state/logging after app crash and API restart. Be precise about whether shutdown intentionally stops running containers.
-4. Re-run backend tests and frontend build if any source code changes.
-5. Update PR #13 status/description truthfully and only mark it ready for review when acceptance checks pass.
+1. Pull the latest `origin/feat/docker-runtime-adapter` before any further edits.
+2. Run the full backend Maven suite and frontend production build after the lifecycle recovery changes; 70 tests is the expected backend total if all new tests are discovered, not a pre-confirmed result.
+3. With Docker Desktop running, validate graceful API shutdown and abrupt restart: existing containers/images should be removed; previously successful rows should become `INTERRUPTED`; stranded `BUILDING`/`STARTING`/`HEALTH_CHECK` rows should become `FAILED`; queued work should wait until recovery completes.
+4. Exercise cleanup when Docker Desktop is temporarily unavailable and confirm the scheduled retry removes orphaned containers/images once Docker returns.
+5. Update PR #13 status truthfully and only mark it ready for review when automated and live checks pass.
 
 ## Important safety boundary
 
