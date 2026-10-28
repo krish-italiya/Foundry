@@ -146,7 +146,10 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
         try {
             context = createRuntimeContext(deploymentId, artifact);
             runDockerCommand(List.of(
-                    "build", "--progress=plain", "--tag", image,
+                    "build", "--progress=plain",
+                    "--label", "dev.foundry.managed=true",
+                    "--label", "dev.foundry.deployment-id=" + deploymentId,
+                    "--tag", image,
                     "--file", context.resolve("Dockerfile").toString(), context.toString()),
                     buildTimeout, deploymentId, DeploymentLogStage.BUILD, true, true);
             if (shuttingDown) throw new IOException("Docker runtime shut down while the image was building.");
