@@ -39,7 +39,7 @@ public class RuntimeLifecycleMonitor {
     private final DeploymentLogService deploymentLogService;
     private volatile boolean startupRecoveryComplete;
 
-    public LocalRuntimeLifecycleMonitor(
+    public RuntimeLifecycleMonitor(
             DeploymentRepository deploymentRepository,
             DeploymentExecutionService executionService,
             ManagedRepositoryArtifactRuntime runtime,
