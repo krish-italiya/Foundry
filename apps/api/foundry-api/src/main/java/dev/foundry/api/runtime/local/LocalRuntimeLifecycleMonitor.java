@@ -15,6 +15,8 @@ import dev.foundry.api.runtime.AnyRuntimeEnabledCondition;
 import dev.foundry.api.runtime.ManagedRepositoryArtifactRuntime;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -49,25 +51,66 @@ public class LocalRuntimeLifecycleMonitor {
         this.deploymentLogService = deploymentLogService;
     }
 
+    private static final String STARTUP_INTERRUPTION_REASON =
+            "Foundry restarted before deployment completed; deployment marked FAILED during startup recovery.";
+
     @EventListener(ApplicationReadyEvent.class)
+    @Order(Ordered.HIGHEST_PRECEDENCE + 1)
     public void reconcileAfterStartup() {
+        recoverInterruptedDeployments();
         reconcile();
     }
 
     @Scheduled(fixedDelayString = "${foundry.runtime.local.monitor-interval-ms:5000}")
     public void reconcilePeriodically() {
+        // Periodic monitoring only observes successful runtimes. In-progress deployment
+        // recovery is startup-only so this monitor never kills a live build.
         reconcile();
     }
 
     /**
      * Public for focused tests; repeated calls are idempotent because the entity
-     * transitions only from RUNNING and each unavailable state is persisted once.
+     * transitions only from SUCCEEDED/RUNNING and unavailable states are persisted once.
      */
     public void reconcile() {
         List<DeploymentEntity> succeeded = deploymentRepository
                 .findAllByStatusOrderByCreatedAtAsc(DeploymentStatus.SUCCEEDED);
         for (DeploymentEntity deployment : succeeded) {
             reconcileOne(deployment.getId());
+        }
+    }
+
+    private void recoverInterruptedDeployments() {
+        for (DeploymentStatus status : List.of(
+                DeploymentStatus.BUILDING, DeploymentStatus.STARTING, DeploymentStatus.HEALTH_CHECK)) {
+            List<DeploymentEntity> interrupted = deploymentRepository
+                    .findAllByStatusOrderByCreatedAtAsc(status);
+            for (DeploymentEntity deployment : interrupted) {
+                recoverInterruptedDeployment(deployment.getId(), status);
+            }
+        }
+    }
+
+    private void recoverInterruptedDeployment(UUID deploymentId, DeploymentStatus previousStatus) {
+        try {
+            if (!executionService.failIfInProgress(deploymentId, STARTUP_INTERRUPTION_REASON)) {
+                return;
+            }
+            try {
+                runtime.stop(deploymentId);
+            } catch (RuntimeException cleanupFailure) {
+                log.warn("Runtime cleanup failed for interrupted deployment {}", deploymentId, cleanupFailure);
+            }
+            deploymentLogService.append(
+                    deploymentId,
+                    DeploymentLogStage.WORKER,
+                    DeploymentLogStream.DEPLOYMENT,
+                    DeploymentLogSeverity.WARN,
+                    "Foundry restarted while deployment was " + previousStatus
+                            + "; marked FAILED and cleaned up its runtime.");
+        } catch (RuntimeException recoveryFailure) {
+            // One stale deployment must not prevent the remaining startup recovery.
+            log.warn("Could not recover interrupted deployment {}", deploymentId, recoveryFailure);
         }
     }
 
