@@ -478,10 +478,17 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - The deployment poller does not claim QUEUED work until startup recovery completes; the periodic runtime monitor also waits for startup recovery and only reconciles already-successful runtimes afterward.
 - The lifecycle monitor was renamed/moved from `runtime/local/LocalRuntimeLifecycleMonitor` to the shared `runtime/RuntimeLifecycleMonitor`, since it now handles either managed runtime adapter.
 - Added tests for strict deterministic container-name parsing, orphan resource cleanup, retrying failed container removal, safe failure transition of in-progress deployment statuses, lifecycle recovery behavior, and worker poller startup gating.
-- Verification status: source-level review completed, but the latest lifecycle suite has **not yet been executed locally**. Expected backend test count is 70 if the existing 59 tests plus the new tests are all discovered; use the actual Maven summary as authoritative.
+- Verification: Windows GitHub Actions passed at commit `bca66469`: 70 tests, 0 failures, 0 errors, 0 skipped; `npm ci` and `npm run build` also passed. The first CI run exposed a test-harness setup issue (retry invoked before startup initialization); the test now calls `cleanupAfterRestart()` before asserting scheduled cleanup. Live Docker shutdown/restart and retry while the daemon is unavailable remain manual acceptance checks.
 
 
 ### Windows CI verification workflow (2026-10-28)
 - Added `.github/workflows/verify.yml` on the feature branch. Pull requests targeting `main` and pushes to `main` run on `windows-latest` with Java 25 and Node.js 22, then execute the full Maven test suite and `npm ci` + `npm run build`.
 - The workflow has read-only repository permissions, cancels superseded runs for the same ref, and is designed to catch the Windows-specific build/test behavior used in local development.
 - Workflow execution status is pending at commit time; don't treat the CI gate as passed until a run reports success.
+
+
+### Lifecycle CI result (2026-10-28)
+- Windows workflow run [#8](https://github.com/krish-italiya/Foundry/actions/runs/40740356945) passed for commit `bca66469a9c208b980403b319d32a3c84d9a059f`.
+- Maven summary: 70 tests, 0 failures, 0 errors, 0 skipped. Frontend `npm ci` and Vite production build passed (48 modules transformed).
+- A preceding CI run caught the new cleanup-retry test invoking the scheduled retry before simulated startup recovery. The test now initializes with `cleanupAfterRestart()` before asserting cleanup retry, matching the production gate.
+- Remaining: live shutdown/restart and Docker-daemon-unavailable recovery tests on the development machine. Unit tests use a scripted Docker command adapter and do not replace this final runtime exercise.
