@@ -53,7 +53,7 @@ The user reported that project navigation, project-level tabs, deployment search
 - No backend source changed after the 59-test run. Later commits included the final UI navigation simplification and documentation updates.
 - Manual UI smoke test of the new project-scoped workflow: user confirmed it works as expected.
 - Real Docker deployment tests succeeded for the Express service and the Vite static frontend.
-- Don't merge yet: Docker lifecycle cleanup/restart reconciliation still needs a focused code review and tests.
+- Current feature branch contains the lifecycle recovery implementation and new tests (Docker orphan cleanup/retries, interrupted-deployment recovery, worker startup gating). The latest changes have not yet been tested locally; run the full Maven suite and frontend build before doing live Docker shutdown/restart checks. Keep PR #13 in draft until then.
 
 ## Immediate next steps
 
