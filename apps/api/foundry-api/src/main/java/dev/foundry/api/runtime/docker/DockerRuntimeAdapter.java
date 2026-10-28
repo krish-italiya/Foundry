@@ -242,8 +242,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
     @Override
     public Optional<Boolean> processAlive(UUID deploymentId) {
         String container = containers.get(deploymentId);
-        if (container == null) return Optional.empty();
-        if (cleanupPending.contains(deploymentId)) return Optional.of(false);
+        if (container == null || cleanupPending.contains(deploymentId)) return Optional.empty();
         try {
             CommandResult result = runDockerCommand(
                     List.of("inspect", "--format={{.State.Running}}", container),
