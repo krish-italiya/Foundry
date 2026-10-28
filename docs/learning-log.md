@@ -413,3 +413,82 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - This monitor detects process unavailability; it does not restart applications, perform retries, or provide sandboxing.
 - The tested `.localhost` URL is local preview only, not public Internet hosting.
 - Public hosting remains out of scope until execution isolation, resource limits, access controls, and public TLS/DNS ingress are designed and validated.
+
+
+## Entry: Docker-backed runtime vertical slice (2026-10-27)
+
+### Feature branch: `feat/docker-runtime-adapter`
+- Added a separate opt-in `DockerRuntimeAdapter`; the current local-process adapter remains available behind its existing property.
+- The Docker adapter packages supported artifacts using generated, fixed Dockerfiles rather than interpolating repository scripts into shell command strings.
+- Node services are copied without `.git`, `node_modules`, common build directories, `.env*`, or `.npmrc`; dependencies install inside the image and use `npm ci` when a lockfile exists.
+- Java images use a non-root numeric user; Node uses the image's `node` user; static Vite output uses unprivileged Nginx.
+- Each container gets a deterministic Foundry name, port 8080 inside the container, loopback-only host publishing, CPU/memory/PID limits, dropped Linux capabilities, no-new-privileges, and a bounded temporary filesystem.
+- Docker CLI arguments are passed as individual `ProcessBuilder` arguments. Image build output and container logs flow into the existing deployment log stream.
+- Local ingress and runtime reconciliation now use a common managed-runtime interface to support either local-process or Docker mode.
+- Docker execution remains disabled by default; do not enable local and Docker runtime flags together.
+
+### Important boundary
+- This feature branch has not yet been compiled or exercised against Docker Desktop; run API tests, frontend production build, and a live Windows Docker deployment before merge.
+- Docker restrictions provide defense-in-depth, not a complete sandbox for hostile repositories. Do not expose public deployments without a separately isolated build/execution boundary, credential policy, authentication, quotas, and public TLS/DNS.
+
+### First live Docker build failure and fix (2026-10-27)
+- The first Express image build failed at `RUN npm ci --omit=dev` with `EACCES: permission denied, mkdir '/app/node_modules'`.
+- Root cause: Docker's `WORKDIR /app` created a root-owned directory; switching to `USER node` did not make that directory writable. `COPY --chown=node:node` applies ownership to copied files/directories, but doesn't guarantee the parent work directory is owned by Node.
+- Fix committed to `feat/docker-runtime-adapter`: explicitly `RUN chown node:node /app` before switching to `USER node`, with a regression assertion checking the Dockerfile instruction order.
+- The backend suite (59 tests) and frontend production build passed before the live integration test. After applying the ownership fix, the trusted Express example successfully built an image, started a constrained container, streamed its logs, passed the health check, and rendered through its UUID `.localhost:8080` URL.
+- Follow-up UX work on the same feature branch replaces the one-page dashboard with separate Overview, Projects, Deployments, and Build & Runtime views. Deployment history is searchable, filterable by status, and paginated to eight releases per page, with a compact mobile navigation bar.
+- Verification still outstanding: rerun the frontend production build after the UI refactor, smoke-test the new views on desktop/mobile, deploy a distinct Vite static frontend, and exercise Docker crash/cleanup/restart handling.
+- System-design lesson: unit tests validate the generated configuration contract, but a real image build catches filesystem ownership and runtime integration assumptions that string-based tests cannot prove.
+
+
+### Project-scoped dashboard and frontend modularization (2026-10-28)
+- Product information architecture: top-level navigation is limited to **Overview** and **Projects**. Selecting a project opens its workspace with **Overview**, **Deployments**, and **Build & Runtime** tabs. This keeps release history and logs scoped to the owning project and avoids global deployment/log screens.
+- Overview is intended as a concise view of project activity and relevant releases, rather than repeating the same project/deployment navigation in redundant quick-action cards.
+- Frontend source responsibilities are separated:
+  - `types/workspace.ts`: domain and API request/response types.
+  - `services/api.ts`: shared HTTP client and error normalization.
+  - `utils/format.ts`: common date, ID, status, and repository formatting helpers.
+  - `hooks/useFoundryWorkspace.ts`: API-backed project/deployment/log state and mutations.
+  - `components/`: shared layout, status/feedback/empty-state primitives, project/deployment lists and forms, pipeline timeline, and terminal log view.
+  - `pages/`: Overview, Projects, selected-project workspace, and its Overview/Deployments/Build & Runtime tab content.
+  - `styles/base.css`, `styles/workspace.css`, and `styles/project-workspace.css`: base styles, shared dashboard component styles, and project workspace styles, composed by `styles.css`.
+- State/ownership principle: `App.tsx` coordinates top-level navigation and connects the workspace hook to page components, while project tabs own view-specific UI state such as filters and pagination.
+- Correctness detail: changing the selected project clears the previous project's deployments and selected release before loading the new project data, avoiding a misleading cross-project display.
+- Verification status at commit time: source files and import references were reviewed through the GitHub connector, but the new composition has **not yet been run through a local TypeScript/Vite production build**. That is the immediate acceptance gate before treating this refactor as complete.
+
+
+### Modular dashboard automated verification (2026-10-28)
+- The latest project-scoped dashboard refactor passed the frontend production build (`tsc --noEmit && vite build`) on Windows.
+- The complete backend Maven test suite passed: 59 tests, 0 failures, 0 errors, 0 skipped.
+- These results validate type/build compatibility and existing backend regressions, but do not replace manual UI interaction testing. Still to smoke-test: entering a project workspace, switching project tabs, deploying from that project's Deployments tab, selecting a release to open Build & Runtime, search/status filtering and pagination, and changing projects without leaking the previous project's logs/deployments into the new selection.
+- Docker lifecycle cleanup and API restart reconciliation also remain acceptance checks before merging PR #13.
+
+
+### Final Overview navigation build (2026-10-28)
+- Pulled current branch head `118d6fc9732553645d6ee69fbf4882bc0ada4965`; `npm run build` passed with `tsc --noEmit` and Vite transforming 48 modules (CSS 45.09 kB, JS 267.84 kB before gzip).
+- This last commit only changes frontend overview/navigation wiring and related documentation. The backend suite had passed 59/59 immediately before it; no backend source changed in this final commit.
+- Remaining: manual UI smoke test of project-scoped navigation and Docker lifecycle cleanup/restart behavior before PR #13 is merge-ready.
+
+
+### Docker lifecycle and restart recovery changeset (2026-10-28)
+- Container and image resources now receive Foundry ownership/deployment labels. Deterministic UUID resource names remain the compatibility path for previously created resources.
+- Startup cleanup lists deterministic Foundry container names and image tags, removes resources left by an API restart, and scans UUID-named stale build-context/workspace directories after the worker poller is held behind recovery.
+- Runtime container removal is now retryable: the adapter removes its routing URL and stops log following immediately, but keeps cleanup-pending state and retains the image when Docker cannot confirm that the container is gone. A scheduled retry attempts cleanup when Docker Desktop becomes available again.
+- Startup recovery marks deployments stranded in BUILDING, STARTING, or HEALTH_CHECK as FAILED with a restart reason and requests deterministic runtime cleanup. Successfully deployed rows whose runtime isn't tracked by the new process are still reconciled to INTERRUPTED.
+- The deployment poller does not claim QUEUED work until startup recovery completes; the periodic runtime monitor also waits for startup recovery and only reconciles already-successful runtimes afterward.
+- The lifecycle monitor was renamed/moved from `runtime/local/LocalRuntimeLifecycleMonitor` to the shared `runtime/RuntimeLifecycleMonitor`, since it now handles either managed runtime adapter.
+- Added tests for strict deterministic container-name parsing, orphan resource cleanup, retrying failed container removal, safe failure transition of in-progress deployment statuses, lifecycle recovery behavior, and worker poller startup gating.
+- Verification: Windows GitHub Actions passed at commit `bca66469`: 70 tests, 0 failures, 0 errors, 0 skipped; `npm ci` and `npm run build` also passed. The first CI run exposed a test-harness setup issue (retry invoked before startup initialization); the test now calls `cleanupAfterRestart()` before asserting scheduled cleanup. Live Docker shutdown/restart and retry while the daemon is unavailable remain manual acceptance checks.
+
+
+### Windows CI verification workflow (2026-10-28)
+- Added `.github/workflows/verify.yml` on the feature branch. Pull requests targeting `main` and pushes to `main` run on `windows-latest` with Java 25 and Node.js 22, then execute the full Maven test suite and `npm ci` + `npm run build`.
+- The workflow has read-only repository permissions, cancels superseded runs for the same ref, and is designed to catch the Windows-specific build/test behavior used in local development.
+- Workflow execution status is pending at commit time; don't treat the CI gate as passed until a run reports success.
+
+
+### Lifecycle CI result (2026-10-28)
+- Windows workflow run [#8](https://github.com/krish-italiya/Foundry/actions/runs/40740356945) passed for commit `bca66469a9c208b980403b319d32a3c84d9a059f`.
+- Maven summary: 70 tests, 0 failures, 0 errors, 0 skipped. Frontend `npm ci` and Vite production build passed (48 modules transformed).
+- A preceding CI run caught the new cleanup-retry test invoking the scheduled retry before simulated startup recovery. The test now initializes with `cleanupAfterRestart()` before asserting cleanup retry, matching the production gate.
+- Remaining: live shutdown/restart and Docker-daemon-unavailable recovery tests on the development machine. Unit tests use a scripted Docker command adapter and do not replace this final runtime exercise.

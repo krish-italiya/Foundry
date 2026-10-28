@@ -9,7 +9,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import dev.foundry.api.runtime.AnyRuntimeEnabledCondition;
+import dev.foundry.api.runtime.ManagedRepositoryArtifactRuntime;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -29,10 +31,7 @@ import java.util.UUID;
  * private loopback process. Other hostnames are left to the normal API handler.
  */
 @Component
-@ConditionalOnProperty(
-        prefix = "foundry.runtime.local",
-        name = "enabled",
-        havingValue = "true")
+@Conditional(AnyRuntimeEnabledCondition.class)
 public class LocalApplicationRouterFilter implements Filter {
 
     private static final Logger log = LoggerFactory.getLogger(LocalApplicationRouterFilter.class);
@@ -42,10 +41,10 @@ public class LocalApplicationRouterFilter implements Filter {
             "te", "trailer", "transfer-encoding", "upgrade", "proxy-connection",
             "host", "content-length", "expect");
 
-    private final LocalProcessRuntimeAdapter runtime;
+    private final ManagedRepositoryArtifactRuntime runtime;
     private final HttpClient httpClient;
 
-    public LocalApplicationRouterFilter(LocalProcessRuntimeAdapter runtime) {
+    public LocalApplicationRouterFilter(ManagedRepositoryArtifactRuntime runtime) {
         this.runtime = runtime;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2))

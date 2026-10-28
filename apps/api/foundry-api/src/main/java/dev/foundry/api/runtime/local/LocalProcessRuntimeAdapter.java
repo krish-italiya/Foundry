@@ -6,8 +6,7 @@ import dev.foundry.api.deployment.log.DeploymentLogService;
 import dev.foundry.api.deployment.log.DeploymentLogSeverity;
 import dev.foundry.api.deployment.log.DeploymentLogStage;
 import dev.foundry.api.deployment.log.DeploymentLogStream;
-import dev.foundry.api.runtime.RepositoryArtifactRuntime;
-import dev.foundry.api.runtime.RuntimeAdapter;
+import dev.foundry.api.runtime.ManagedRepositoryArtifactRuntime;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +44,7 @@ import java.util.concurrent.TimeUnit;
         name = "enabled",
         havingValue = "true"
 )
-public class LocalProcessRuntimeAdapter implements RepositoryArtifactRuntime {
+public class LocalProcessRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(LocalProcessRuntimeAdapter.class);
 
