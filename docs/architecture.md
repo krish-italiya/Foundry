@@ -1,6 +1,6 @@
 # Foundry Architecture — Repository-to-Deployment Pipeline
 
-Status: **the feature branch has been exercised on Windows with Docker Desktop: a trusted Express repository and a separate React/Vite frontend both built and served successfully. The modular, project-scoped dashboard passed a fresh TypeScript/Vite production build, and the user confirmed project navigation works. A lifecycle recovery changeset now adds orphan-resource cleanup, retryable container removal, startup recovery of stranded deployments, and worker-poller gating. These latest lifecycle tests have not yet been run. Docker remains opt-in and local-process mode remains disabled by default.**
+Status: **the feature branch has been exercised on Windows with Docker Desktop: a trusted Express repository and a separate React/Vite frontend both built and served successfully. The modular, project-scoped dashboard passed a fresh TypeScript/Vite production build, and the user confirmed project navigation works. A lifecycle recovery changeset now adds orphan-resource cleanup, retryable container removal, startup recovery of stranded deployments, and worker-poller gating. These latest lifecycle tests have not yet been run. A Windows GitHub Actions workflow was added to run backend tests and the frontend build on pull requests. Docker remains opt-in and local-process mode remains disabled by default.**
 
 ## Current path
 
@@ -129,7 +129,7 @@ The ingress is deliberately a local-development seam, not production ingress. Ru
 
 ## Next checkpoints
 
-1. Run the complete Windows backend suite and frontend production build after the lifecycle recovery changes; new tests cover Docker orphan cleanup/retries, startup recovery of stranded deployments, and worker startup gating.
+1. Run the new Windows GitHub Actions job and the local backend/frontend verification after the lifecycle recovery changes; tests cover Docker orphan cleanup/retries, startup recovery of stranded deployments, and worker startup gating.
 2. Docker and Vite runtime paths have already succeeded for trusted Express and Ionic React/Vite repositories.
 3. Exercise graceful API shutdown and abrupt restart with Docker enabled; confirm old containers/images are removed, successful deployments become INTERRUPTED, in-flight deployments become FAILED, and queued work waits until recovery completes.
 4. Review cleanup logs and retry behavior with Docker Desktop temporarily unavailable, then review/merge PR #13 only after the new suite passes.
