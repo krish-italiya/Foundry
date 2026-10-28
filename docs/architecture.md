@@ -1,6 +1,6 @@
 # Foundry Architecture — Repository-to-Deployment Pipeline
 
-Status: **the feature branch has been exercised on Windows with Docker Desktop: a trusted Express repository was built into an image, launched in a constrained container, health-checked, and served through the Foundry local URL. The Node image directory-permission issue found during the first attempt is fixed. The latest modular UI refactor passed a fresh TypeScript/Vite production build and the backend regression suite (59 tests, 0 failures). UI interaction smoke tests and Docker lifecycle cleanup remain before merge. Docker remains opt-in and local-process mode remains disabled by default.**
+Status: **the feature branch has been exercised on Windows with Docker Desktop: a trusted Express repository and a separate React/Vite frontend both built and served successfully. The modular, project-scoped dashboard passed a fresh TypeScript/Vite production build, and the user confirmed project navigation works. A lifecycle recovery changeset now adds orphan-resource cleanup, retryable container removal, startup recovery of stranded deployments, and worker-poller gating. These latest lifecycle tests have not yet been run. Docker remains opt-in and local-process mode remains disabled by default.**
 
 ## Current path
 
