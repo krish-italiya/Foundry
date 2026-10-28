@@ -468,3 +468,14 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - Pulled current branch head `118d6fc9732553645d6ee69fbf4882bc0ada4965`; `npm run build` passed with `tsc --noEmit` and Vite transforming 48 modules (CSS 45.09 kB, JS 267.84 kB before gzip).
 - This last commit only changes frontend overview/navigation wiring and related documentation. The backend suite had passed 59/59 immediately before it; no backend source changed in this final commit.
 - Remaining: manual UI smoke test of project-scoped navigation and Docker lifecycle cleanup/restart behavior before PR #13 is merge-ready.
+
+
+### Docker lifecycle and restart recovery changeset (2026-10-28)
+- Container and image resources now receive Foundry ownership/deployment labels. Deterministic UUID resource names remain the compatibility path for previously created resources.
+- Startup cleanup lists deterministic Foundry container names and image tags, removes resources left by an API restart, and scans UUID-named stale build-context/workspace directories after the worker poller is held behind recovery.
+- Runtime container removal is now retryable: the adapter removes its routing URL and stops log following immediately, but keeps cleanup-pending state and retains the image when Docker cannot confirm that the container is gone. A scheduled retry attempts cleanup when Docker Desktop becomes available again.
+- Startup recovery marks deployments stranded in BUILDING, STARTING, or HEALTH_CHECK as FAILED with a restart reason and requests deterministic runtime cleanup. Successfully deployed rows whose runtime isn't tracked by the new process are still reconciled to INTERRUPTED.
+- The deployment poller does not claim QUEUED work until startup recovery completes; the periodic runtime monitor also waits for startup recovery and only reconciles already-successful runtimes afterward.
+- The lifecycle monitor was renamed/moved from `runtime/local/LocalRuntimeLifecycleMonitor` to the shared `runtime/RuntimeLifecycleMonitor`, since it now handles either managed runtime adapter.
+- Added tests for strict deterministic container-name parsing, orphan resource cleanup, retrying failed container removal, safe failure transition of in-progress deployment statuses, lifecycle recovery behavior, and worker poller startup gating.
+- Verification status: source-level review completed, but the latest lifecycle suite has **not yet been executed locally**. Expected backend test count is 68 if the existing 59 tests plus the new tests are all discovered; use the actual Maven summary as authoritative.
