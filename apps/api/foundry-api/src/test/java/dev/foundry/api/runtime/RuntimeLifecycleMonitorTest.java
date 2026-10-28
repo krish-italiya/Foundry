@@ -25,7 +25,7 @@ class RuntimeLifecycleMonitorTest {
     private final ManagedRepositoryArtifactRuntime runtime = mock(ManagedRepositoryArtifactRuntime.class);
     private final DeploymentLogService logService = mock(DeploymentLogService.class);
 
-    private final LocalRuntimeLifecycleMonitor monitor = new RuntimeLifecycleMonitor(
+    private final RuntimeLifecycleMonitor monitor = new RuntimeLifecycleMonitor(
             repository, executionService, runtime, logService);
 
     private final UUID deploymentId = UUID.randomUUID();
@@ -67,7 +67,7 @@ class RuntimeLifecycleMonitorTest {
                 DeploymentLogStage.WORKER,
                 DeploymentLogStream.DEPLOYMENT,
                 DeploymentLogSeverity.WARN,
-                "Foundry restarted while deployment was BUILDING; marked FAILED and cleaned up its runtime.");
+                "Foundry restarted while deployment was BUILDING; marked FAILED and requested runtime cleanup.");
     }
 
     @Test
