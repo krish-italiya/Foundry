@@ -9,6 +9,11 @@ import dev.foundry.api.deployment.log.DeploymentLogStream;
 import dev.foundry.api.runtime.ManagedRepositoryArtifactRuntime;
 import dev.foundry.api.runtime.local.LocalApplicationAddress;
 import jakarta.annotation.PreDestroy;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -67,6 +72,8 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
     private final Map<UUID, String> containers = new ConcurrentHashMap<>();
     private final Map<UUID, URI> applicationUrls = new ConcurrentHashMap<>();
     private final Map<UUID, Process> logFollowers = new ConcurrentHashMap<>();
+    private final Set<UUID> startingDeployments = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> cleanupPending = ConcurrentHashMap.newKeySet();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(1))
             .followRedirects(HttpClient.Redirect.NEVER)
@@ -119,7 +126,11 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
         if (deploymentId == null || artifact == null || artifact.launchMode() == null) {
             throw new IOException("A deployment ID and supported built artifact are required.");
         }
+        if (!startingDeployments.add(deploymentId)) {
+            throw new IllegalStateException("Docker startup is already in progress for this deployment.");
+        }
         if (containers.containsKey(deploymentId)) {
+            startingDeployments.remove(deploymentId);
             throw new IllegalStateException("A Docker container is already tracked for this deployment.");
         }
 
@@ -137,6 +148,8 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
             runDockerCommand(List.of(
                     "run", "--detach",
                     "--name", container,
+                    "--label", "dev.foundry.managed=true",
+                    "--label", "dev.foundry.deployment-id=" + deploymentId,
                     "--publish", "127.0.0.1:" + hostPort + ":" + CONTAINER_PORT,
                     "--memory", memoryLimit,
                     "--memory-swap", memoryLimit,
@@ -155,6 +168,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
                     Duration.ofSeconds(30), deploymentId, DeploymentLogStage.STARTUP, true, true);
 
             containers.put(deploymentId, container);
+            cleanupPending.remove(deploymentId);
             applicationUrls.put(deploymentId, URI.create("http://127.0.0.1:" + hostPort));
             startLogFollower(deploymentId, container);
             appendLog(deploymentId, DeploymentLogStage.STARTUP, DeploymentLogStream.DEPLOYMENT,
@@ -166,6 +180,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
             stop(deploymentId);
             throw failure;
         } finally {
+            startingDeployments.remove(deploymentId);
             if (context != null) deleteTreeQuietly(context, "runtime build context");
             // The generated image has the required files; the checkout is disposable after packaging.
             deleteTreeQuietly(artifact.workspaceDirectory(), "repository build workspace");
@@ -217,6 +232,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
     public Optional<Boolean> processAlive(UUID deploymentId) {
         String container = containers.get(deploymentId);
         if (container == null) return Optional.empty();
+        if (cleanupPending.contains(deploymentId)) return Optional.of(false);
         try {
             CommandResult result = runDockerCommand(
                     List.of("inspect", "--format={{.State.Running}}", container),
@@ -237,41 +253,177 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
     public void stop(UUID deploymentId) {
         if (deploymentId == null) return;
         applicationUrls.remove(deploymentId);
-        containers.remove(deploymentId);
+        stopLogFollower(deploymentId);
 
-        Process follower = logFollowers.remove(deploymentId);
-        if (follower != null && follower.isAlive()) {
-            follower.destroy();
-            try {
-                if (!follower.waitFor(1, TimeUnit.SECONDS)) follower.destroyForcibly();
-            } catch (InterruptedException interrupted) {
-                follower.destroyForcibly();
-                Thread.currentThread().interrupt();
-            }
+        String container = containers.getOrDefault(deploymentId, containerName(deploymentId));
+        boolean removed = removeContainer(container, deploymentId);
+        if (removed) {
+            containers.remove(deploymentId, container);
+            cleanupPending.remove(deploymentId);
+            deleteImageQuietly(imageName(deploymentId));
+        } else {
+            // Keep ownership and a retry marker until Docker confirms the container is gone.
+            cleanupPending.add(deploymentId);
         }
 
-        String container = containerName(deploymentId);
-        try {
-            CommandResult result = runDockerCommand(
-                    List.of("rm", "--force", container), Duration.ofSeconds(15),
-                    null, null, false, false);
-            if (result.exitCode() != 0
-                    && !result.output().toLowerCase(Locale.ROOT).contains("no such container")
-                    && !dockerDaemonUnavailable(result.output())) {
-                log.warn("Docker container cleanup for {} returned: {}", container, safeExcerpt(result.output()));
-            }
-        } catch (IOException failure) {
-            log.warn("Could not remove Docker container {}: {}", container, failure.getMessage());
-        }
-        deleteImageQuietly(imageName(deploymentId));
+        // These directories are host-side build inputs, not mounted container volumes.
         deleteTreeQuietly(contextRoot.resolve(deploymentId.toString()).normalize(), "runtime build context");
         deleteTreeQuietly(buildWorkspaceRoot.resolve(deploymentId.toString()).normalize(),
                 "repository build workspace");
     }
 
+    private void stopLogFollower(UUID deploymentId) {
+        Process follower = logFollowers.remove(deploymentId);
+        if (follower == null || !follower.isAlive()) return;
+        follower.destroy();
+        try {
+            if (!follower.waitFor(1, TimeUnit.SECONDS)) follower.destroyForcibly();
+        } catch (InterruptedException interrupted) {
+            follower.destroyForcibly();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private boolean removeContainer(String container, UUID deploymentId) {
+        try {
+            CommandResult result = runDockerCommand(
+                    List.of("rm", "--force", container), Duration.ofSeconds(15),
+                    null, null, false, false);
+            if (result.exitCode() == 0 || missingContainer(result.output())) return true;
+            log.warn("Docker container cleanup for deployment {} will be retried: {}",
+                    deploymentId, safeExcerpt(result.output()));
+            return false;
+        } catch (IOException failure) {
+            log.warn("Docker container cleanup for deployment {} will be retried: {}",
+                    deploymentId, failure.getMessage());
+            return false;
+        }
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public void cleanupAfterRestart() {
+        reconcileOrphanedDockerResources();
+        cleanupStaleLocalDirectories(contextRoot, "runtime build context");
+        cleanupStaleLocalDirectories(buildWorkspaceRoot, "repository build workspace");
+    }
+
+    /**
+     * Periodically retries cleanup when Docker Desktop was temporarily unavailable.
+     * Only UUID-named Foundry resources not owned by this process are considered orphans.
+     */
+    @Scheduled(fixedDelayString = "${foundry.runtime.docker.cleanup-interval-ms:30000}")
+    public void retryPendingCleanupAndRemoveOrphans() {
+        for (UUID deploymentId : List.copyOf(cleanupPending)) stop(deploymentId);
+        reconcileOrphanedDockerResources();
+    }
+
+    void reconcileOrphanedDockerResources() {
+        CommandResult containersResult;
+        try {
+            containersResult = runDockerCommand(
+                    List.of("container", "ls", "--all", "--format={{.ID}}|{{.Names}}",
+                            "--filter", "name=foundry-deployment-"),
+                    Duration.ofSeconds(15), null, null, false, false);
+        } catch (IOException unavailable) {
+            log.debug("Skipping orphan container reconciliation because Docker is unavailable: {}",
+                    unavailable.getMessage());
+            return;
+        }
+        if (containersResult.exitCode() != 0) {
+            log.debug("Skipping orphan container reconciliation: {}", safeExcerpt(containersResult.output()));
+            return;
+        }
+
+        for (String line : containersResult.output().split("\\R")) {
+            int separator = line.indexOf('|');
+            if (separator < 1 || separator == line.length() - 1) continue;
+            String name = line.substring(separator + 1).trim();
+            Optional<UUID> parsedId = deploymentIdFromContainerName(name);
+            if (parsedId.isEmpty()) continue;
+            UUID deploymentId = parsedId.get();
+            if (isOwnedByThisProcess(deploymentId)) continue;
+            log.info("Removing orphaned Foundry container {} after control-plane restart.", name);
+            stop(deploymentId);
+        }
+
+        // Clean image tags left behind if the API stopped between image build and container start.
+        CommandResult imagesResult;
+        try {
+            imagesResult = runDockerCommand(
+                    List.of("image", "ls", "--all", "--format={{.Repository}}:{{.Tag}}",
+                            "--filter", "reference=foundry-deployment-*"),
+                    Duration.ofSeconds(15), null, null, false, false);
+        } catch (IOException unavailable) {
+            log.debug("Skipping orphan image reconciliation because Docker is unavailable: {}",
+                    unavailable.getMessage());
+            return;
+        }
+        if (imagesResult.exitCode() != 0) {
+            log.debug("Skipping orphan image reconciliation: {}", safeExcerpt(imagesResult.output()));
+            return;
+        }
+
+        for (String line : imagesResult.output().split("\\R")) {
+            String reference = line.trim();
+            int colon = reference.lastIndexOf(':');
+            if (colon <= 0) continue;
+            String repository = reference.substring(0, colon);
+            Optional<UUID> parsedId = deploymentIdFromContainerName(repository);
+            if (parsedId.isEmpty()) continue;
+            UUID deploymentId = parsedId.get();
+            if (isOwnedByThisProcess(deploymentId) || cleanupPending.contains(deploymentId)) continue;
+            deleteImageQuietly(imageName(deploymentId));
+        }
+    }
+
+    private boolean isOwnedByThisProcess(UUID deploymentId) {
+        return startingDeployments.contains(deploymentId) || containers.containsKey(deploymentId);
+    }
+
+    private void cleanupStaleLocalDirectories(Path root, String description) {
+        if (!Files.isDirectory(root)) return;
+        try (var entries = Files.list(root)) {
+            entries.filter(Files::isDirectory).forEach(path -> {
+                Optional<UUID> id = parseUuid(path.getFileName().toString());
+                if (id.isEmpty() || isOwnedByThisProcess(id.get())) return;
+                deleteTreeQuietly(path, description);
+            });
+        } catch (IOException failure) {
+            log.warn("Could not scan stale {} directories under {}: {}", description, root, failure.getMessage());
+        }
+    }
+
+    static Optional<UUID> deploymentIdFromContainerName(String rawName) {
+        if (rawName == null) return Optional.empty();
+        String name = rawName.startsWith("/") ? rawName.substring(1) : rawName;
+        String prefix = "foundry-deployment-";
+        if (!name.startsWith(prefix)) return Optional.empty();
+        return parseUuid(name.substring(prefix.length()));
+    }
+
+    private static Optional<UUID> parseUuid(String value) {
+        if (value == null) return Optional.empty();
+        try {
+            UUID id = UUID.fromString(value);
+            return id.toString().equalsIgnoreCase(value) ? Optional.of(id) : Optional.empty();
+        } catch (IllegalArgumentException invalidUuid) {
+            return Optional.empty();
+        }
+    }
+
+    private static boolean missingContainer(String output) {
+        String text = output == null ? "" : output.toLowerCase(Locale.ROOT);
+        return text.contains("no such container") || text.contains("no such object")
+                || text.contains("container not found");
+    }
+
     @PreDestroy
     public void stopAll() {
-        for (UUID deploymentId : List.copyOf(containers.keySet())) stop(deploymentId);
+        Set<UUID> ids = ConcurrentHashMap.newKeySet();
+        ids.addAll(containers.keySet());
+        ids.addAll(cleanupPending);
+        for (UUID deploymentId : ids) stop(deploymentId);
     }
 
     /** Deterministic, repository-independent Dockerfile generation used by focused contract tests. */
@@ -411,7 +563,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
         }
     }
 
-    private CommandResult runDockerCommand(
+    CommandResult runDockerCommand(
             List<String> args, Duration timeout, UUID deploymentId,
             DeploymentLogStage stage, boolean logOutput, boolean requireSuccess) throws IOException {
         List<String> command = new ArrayList<>();
@@ -563,6 +715,6 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
         return text.length() <= max ? text : text.substring(text.length() - max);
     }
 
-    private record CommandResult(int exitCode, String output) {
+    record CommandResult(int exitCode, String output) {
     }
 }
