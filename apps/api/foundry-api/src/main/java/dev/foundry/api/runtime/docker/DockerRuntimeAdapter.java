@@ -378,7 +378,9 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
     }
 
     private boolean isOwnedByThisProcess(UUID deploymentId) {
-        return startingDeployments.contains(deploymentId) || containers.containsKey(deploymentId);
+        return startingDeployments.contains(deploymentId)
+                || containers.containsKey(deploymentId)
+                || cleanupPending.contains(deploymentId);
     }
 
     private void cleanupStaleLocalDirectories(Path root, String description) {
