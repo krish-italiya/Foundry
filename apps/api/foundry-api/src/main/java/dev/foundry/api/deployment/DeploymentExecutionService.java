@@ -66,6 +66,19 @@ public class DeploymentExecutionService {
         }
     }
 
+    @Transactional
+    public boolean failIfInProgress(UUID deploymentId, String reason) {
+        DeploymentEntity deployment = lockedDeployment(deploymentId);
+        DeploymentStatus status = deployment.getStatus();
+        if (status != DeploymentStatus.BUILDING
+                && status != DeploymentStatus.STARTING
+                && status != DeploymentStatus.HEALTH_CHECK) {
+            return false;
+        }
+        deployment.fail(reason);
+        return true;
+    }
+
     private DeploymentEntity lockedDeployment(UUID deploymentId) {
         return deploymentRepository.findByIdForUpdate(deploymentId)
                 .orElseThrow(() -> new IllegalStateException(
