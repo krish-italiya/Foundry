@@ -82,3 +82,8 @@ Push-Location .\\apps\\web; npm run dev
 \`\`\`
 
 Dashboard: http://127.0.0.1:5173. Docker-mode variables are session-scoped; set them again if the API process is restarted in a new terminal.
+
+
+## CI verification workflow
+
+The feature branch now contains `.github/workflows/verify.yml`. It runs the backend Maven test suite and frontend production build on Windows for PRs targeting `main` and pushes to `main`. Its first run is pending/unverified; inspect the PR checks before merging.
