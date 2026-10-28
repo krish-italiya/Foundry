@@ -121,15 +121,16 @@ The ingress is deliberately a local-development seam, not production ingress. Ru
 - Restarting the Foundry API changed a previously successful deployment with no process tracked by the new API process to `INTERRUPTED` and recorded the reconciliation log.
 - Docker Desktop integration: the trusted `render-examples/express-hello-world` repository built an image, started a container with `512m` memory / `1.0` CPU / `128` PID limits and loopback-only port publishing, streamed application logs, passed the HTTP health check, and rendered at its UUID `.localhost:8080` URL (2026-10-27).
 - The first Node image build exposed an `/app` ownership issue when `npm ci` ran as the non-root `node` user. Added an explicit ownership fix and a regression assertion for the Dockerfile instruction order.
-- Dashboard redesign first separated Overview, Projects, Deployments, and Build & Runtime into dedicated top-level views. Follow-up UX review moved Deployments and Build & Runtime inside each selected project workspace, with project-level tabs for Overview, Deployments, and Build & Runtime.
+- Dashboard redesign first separated Overview, Projects, Deployments, and Build & Runtime into dedicated top-level views. Follow-up UX review moved Deployments and Build & Runtime inside each selected project workspace, with project-level tabs for Overview, Deployments, and Build & Runtime. The user manually confirmed the project-scoped navigation and deployment workflow.
 - Frontend code is now split into `types/workspace.ts`, `services/api.ts`, `utils/format.ts`, `hooks/useFoundryWorkspace.ts`, reusable `components/`, focused `pages/`, and three stylesheets composed by `styles.css`. The root `App.tsx` is now primarily navigation and page composition.
 - Deployment history is scoped to the current project, search/status filters and eight-item pagination live in the project Deployments tab, and logs/pipeline details live in that project's Build & Runtime tab.
-- The modular UI refactor is committed to the feature branch but remains unverified locally; re-run `npm run build`, the backend tests, and desktop/mobile smoke checks before merge.
+- The modular UI refactor passed a fresh Windows `npm run build`; the complete backend suite previously passed 59 tests before the latest lifecycle-only backend changes.
+- The latest lifecycle changeset adds Docker orphan discovery/cleanup, retryable container removal, startup recovery for deployments stranded in BUILDING/STARTING/HEALTH_CHECK, and a startup gate so scheduled workers do not claim queued work until recovery finishes. New tests cover these contracts but **have not yet been run**.
 
 ## Next checkpoints
 
-1. Fresh Windows verification completed: `npm run build` passed and the complete API suite reported 59 tests, 0 failures, 0 errors, and 0 skipped.
-2. Smoke-test desktop/mobile navigation; verify project registration/trust, project-scoped tabs, deployment creation, search/status filters, pagination, release selection, logs, and application links.
-3. Express and Ionic React/Vite deployments have already validated the Node service and static frontend Docker paths locally.
-4. Validate Docker lifecycle failure/cleanup and API restart reconciliation; then review and merge the feature branch.
+1. Run the complete Windows backend suite and frontend production build after the lifecycle recovery changes; new tests cover Docker orphan cleanup/retries, startup recovery of stranded deployments, and worker startup gating.
+2. Docker and Vite runtime paths have already succeeded for trusted Express and Ionic React/Vite repositories.
+3. Exercise graceful API shutdown and abrupt restart with Docker enabled; confirm old containers/images are removed, successful deployments become INTERRUPTED, in-flight deployments become FAILED, and queued work waits until recovery completes.
+4. Review cleanup logs and retry behavior with Docker Desktop temporarily unavailable, then review/merge PR #13 only after the new suite passes.
 5. Design a separately isolated build worker before any public repository execution. Docker alone is not a complete hostile-code sandbox.
