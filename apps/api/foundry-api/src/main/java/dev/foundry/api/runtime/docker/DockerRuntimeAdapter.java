@@ -74,6 +74,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
     private final Map<UUID, Process> logFollowers = new ConcurrentHashMap<>();
     private final Set<UUID> startingDeployments = ConcurrentHashMap.newKeySet();
     private final Set<UUID> cleanupPending = ConcurrentHashMap.newKeySet();
+    private volatile boolean startupCleanupComplete;
     private volatile boolean shuttingDown;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(1))
@@ -324,6 +325,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
         reconcileOrphanedDockerResources();
         cleanupStaleLocalDirectories(contextRoot, "runtime build context");
         cleanupStaleLocalDirectories(buildWorkspaceRoot, "repository build workspace");
+        startupCleanupComplete = true;
     }
 
     /**
@@ -332,6 +334,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
      */
     @Scheduled(fixedDelayString = "${foundry.runtime.docker.cleanup-interval-ms:30000}")
     public void retryPendingCleanupAndRemoveOrphans() {
+        if (!startupCleanupComplete || shuttingDown) return;
         for (UUID deploymentId : List.copyOf(cleanupPending)) stop(deploymentId);
         reconcileOrphanedDockerResources();
     }
