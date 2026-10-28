@@ -71,6 +71,38 @@ class RuntimeLifecycleMonitorTest {
     }
 
     @Test
+    void startupRecoveryAlsoFailsDeploymentsInterruptedDuringStartupAndHealthCheck() {
+        UUID startingId = UUID.randomUUID();
+        UUID healthCheckId = UUID.randomUUID();
+        DeploymentEntity starting = mock(DeploymentEntity.class);
+        DeploymentEntity healthCheck = mock(DeploymentEntity.class);
+        when(starting.getId()).thenReturn(startingId);
+        when(healthCheck.getId()).thenReturn(healthCheckId);
+        when(repository.findAllByStatusOrderByCreatedAtAsc(DeploymentStatus.STARTING))
+                .thenReturn(List.of(starting));
+        when(repository.findAllByStatusOrderByCreatedAtAsc(DeploymentStatus.HEALTH_CHECK))
+                .thenReturn(List.of(healthCheck));
+        when(executionService.failIfInProgress(eq(startingId), anyString())).thenReturn(true);
+        when(executionService.failIfInProgress(eq(healthCheckId), anyString())).thenReturn(true);
+        when(runtime.processAlive(deploymentId)).thenReturn(Optional.of(true));
+
+        monitor.reconcileAfterStartup();
+
+        verify(executionService).failIfInProgress(eq(startingId), anyString());
+        verify(executionService).failIfInProgress(eq(healthCheckId), anyString());
+        verify(runtime).stop(startingId);
+        verify(runtime).stop(healthCheckId);
+        verify(logService).append(
+                eq(startingId), eq(DeploymentLogStage.WORKER), eq(DeploymentLogStream.DEPLOYMENT),
+                eq(DeploymentLogSeverity.WARN),
+                eq("Foundry restarted while deployment was STARTING; marked FAILED and requested runtime cleanup."));
+        verify(logService).append(
+                eq(healthCheckId), eq(DeploymentLogStage.WORKER), eq(DeploymentLogStream.DEPLOYMENT),
+                eq(DeploymentLogSeverity.WARN),
+                eq("Foundry restarted while deployment was HEALTH_CHECK; marked FAILED and requested runtime cleanup."));
+    }
+
+    @Test
     void periodicMonitoringWaitsUntilStartupRecoveryHasCompleted() {
         monitor.reconcilePeriodically();
 
