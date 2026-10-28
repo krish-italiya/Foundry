@@ -74,6 +74,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
     private final Map<UUID, Process> logFollowers = new ConcurrentHashMap<>();
     private final Set<UUID> startingDeployments = ConcurrentHashMap.newKeySet();
     private final Set<UUID> cleanupPending = ConcurrentHashMap.newKeySet();
+    private volatile boolean shuttingDown;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(1))
             .followRedirects(HttpClient.Redirect.NEVER)
@@ -123,6 +124,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
 
     @Override
     public URI startArtifact(UUID deploymentId, BuiltArtifact artifact) throws IOException {
+        if (shuttingDown) throw new IOException("Docker runtime is shutting down; new deployments are not accepted.");
         if (deploymentId == null || artifact == null || artifact.launchMode() == null) {
             throw new IOException("A deployment ID and supported built artifact are required.");
         }
@@ -143,6 +145,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
                     "build", "--progress=plain", "--tag", image,
                     "--file", context.resolve("Dockerfile").toString(), context.toString()),
                     buildTimeout, deploymentId, DeploymentLogStage.BUILD, true, true);
+            if (shuttingDown) throw new IOException("Docker runtime shut down while the image was building.");
 
             int hostPort = reserveLoopbackPort();
             runDockerCommand(List.of(
@@ -166,6 +169,7 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
                     "--env", "HOSTNAME=0.0.0.0",
                     image),
                     Duration.ofSeconds(30), deploymentId, DeploymentLogStage.STARTUP, true, true);
+            if (shuttingDown) throw new IOException("Docker runtime shut down while the container was starting.");
 
             containers.put(deploymentId, container);
             cleanupPending.remove(deploymentId);
@@ -422,9 +426,11 @@ public class DockerRuntimeAdapter implements ManagedRepositoryArtifactRuntime {
 
     @PreDestroy
     public void stopAll() {
+        shuttingDown = true;
         Set<UUID> ids = ConcurrentHashMap.newKeySet();
         ids.addAll(containers.keySet());
         ids.addAll(cleanupPending);
+        ids.addAll(startingDeployments);
         for (UUID deploymentId : ids) stop(deploymentId);
     }
 
