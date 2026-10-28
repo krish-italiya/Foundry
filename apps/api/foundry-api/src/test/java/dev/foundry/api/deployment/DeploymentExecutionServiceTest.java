@@ -28,6 +28,19 @@ class DeploymentExecutionServiceTest {
     }
 
     @Test
+    void failIfInProgressMarksHealthCheckInterruptedAsFailed() {
+        DeploymentEntity deployment = mock(DeploymentEntity.class);
+        when(repository.findByIdForUpdate(deploymentId)).thenReturn(Optional.of(deployment));
+        when(deployment.getStatus()).thenReturn(DeploymentStatus.HEALTH_CHECK);
+        String reason = "Foundry restarted before deployment completed.";
+
+        boolean changed = service.failIfInProgress(deploymentId, reason);
+
+        assertThat(changed).isTrue();
+        verify(deployment).fail(reason);
+    }
+
+    @Test
     void failIfInProgressDoesNotModifyQueuedDeployment() {
         DeploymentEntity deployment = mock(DeploymentEntity.class);
         when(repository.findByIdForUpdate(deploymentId)).thenReturn(Optional.of(deployment));
