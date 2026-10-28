@@ -71,6 +71,13 @@ class RuntimeLifecycleMonitorTest {
     }
 
     @Test
+    void periodicMonitoringWaitsUntilStartupRecoveryHasCompleted() {
+        monitor.reconcilePeriodically();
+
+        verifyNoInteractions(repository, executionService, runtime, logService);
+    }
+
+    @Test
     void marksExitedProcessCrashedAndRemovesItsRoute() {
         when(runtime.processAlive(deploymentId)).thenReturn(Optional.of(false));
         when(executionService.markRuntimeState(deploymentId, RuntimeState.CRASHED))
