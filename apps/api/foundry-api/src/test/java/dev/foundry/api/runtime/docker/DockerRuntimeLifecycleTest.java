@@ -38,6 +38,7 @@ class DockerRuntimeLifecycleTest {
     @Test
     void retriesFailedContainerRemovalAndKeepsImageUntilContainerIsGone() {
         ScriptedDockerRuntimeAdapter runtime = new ScriptedDockerRuntimeAdapter(temporaryDirectory);
+        runtime.cleanupAfterRestart(); // Enable scheduled retries only after startup reconciliation.
         UUID deploymentId = UUID.randomUUID();
         runtime.containerRemovalResults.add(new DockerRuntimeAdapter.CommandResult(
                 1, "Cannot connect to the Docker daemon"));
