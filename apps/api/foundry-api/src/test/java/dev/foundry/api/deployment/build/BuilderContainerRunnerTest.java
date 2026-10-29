@@ -145,7 +145,7 @@ class BuilderContainerRunnerTest {
         runner.run(deploymentId, service, List.of("npm.cmd", "ci"), Duration.ofSeconds(60), Map.of("CI", "true"));
 
         var captor = org.mockito.ArgumentCaptor.forClass((Class<List<String>>) (Class<?>) List.class);
-        verify(docker, times(8)).execute(
+        verify(docker, times(7)).execute(
                 captor.capture(), any(Duration.class), nullable(UUID.class), anyBoolean());
         List<String> command = captor.getAllValues().getLast();
         assertThat(command).contains("--user", "10001:10001", "--workdir", "/workspace/web",
