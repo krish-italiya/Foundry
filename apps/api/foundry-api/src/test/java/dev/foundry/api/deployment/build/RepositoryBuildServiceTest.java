@@ -142,6 +142,53 @@ class RepositoryBuildServiceTest {
     }
 
     @Test
+    void keepsHostBuildPathWhenIsolatedBuilderIsDisabled() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        UUID deploymentId = UUID.randomUUID();
+        BuildCommandRunner commandRunner = mock(BuildCommandRunner.class);
+        BuilderContainerRunner builder = mock(BuilderContainerRunner.class);
+        DeploymentLogService logService = mock(DeploymentLogService.class);
+        ProjectRepository projectRepository = mock(ProjectRepository.class);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(
+                new ProjectEntity("trusted", "https://github.com/example/trusted", true)));
+
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<String> arguments = invocation.getArgument(2);
+            if (arguments.size() > 1 && arguments.getFirst().equals("git")
+                    && arguments.get(1).equals("clone")) {
+                Path workspace = Path.of(arguments.getLast());
+                Files.createDirectories(workspace);
+                Files.writeString(workspace.resolve("package.json"),
+                        "{\"name\":\"trusted-node\",\"scripts\":{\"start\":\"node app.js\"}}");
+                Files.writeString(workspace.resolve("package-lock.json"), "{\"lockfileVersion\":3}");
+                Files.writeString(workspace.resolve("app.js"), "console.log('fixture');");
+            }
+            return null;
+        }).when(commandRunner).run(
+                any(UUID.class), any(Path.class), anyList(), any(Duration.class), anyMap());
+
+        RepositoryBuildService service = new RepositoryBuildService(
+                commandRunner,
+                builder,
+                logService,
+                JsonMapper.builder().build(),
+                projectRepository,
+                temporaryDirectory.resolve("host-workspaces").toString(),
+                "",
+                60,
+                false);
+
+        BuiltArtifact artifact = service.build(
+                deploymentId, projectId, "https://github.com/example/trusted", "main", null);
+
+        assertThat(artifact.launchMode()).isEqualTo(BuiltArtifact.LaunchMode.NODE_START);
+        verify(commandRunner, times(3)).run(
+                any(UUID.class), any(Path.class), anyList(), any(Duration.class), anyMap());
+        verifyNoInteractions(builder);
+    }
+
+    @Test
     void routesNpmScriptsThroughIsolatedBuilderWhenEnabled() throws Exception {
         UUID projectId = UUID.randomUUID();
         UUID deploymentId = UUID.randomUUID();

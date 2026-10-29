@@ -69,6 +69,13 @@ class BuilderContainerRunnerTest {
     }
 
     @Test
+    void normalizesWindowsMavenPomPathForLinuxBuilder() throws IOException {
+        assertThat(BuilderContainerRunner.translateCommand(
+                List.of("mvnw.cmd", "-f", "apps\\api\\pom.xml", "-B", "verify")))
+                .containsExactly("sh", "./mvnw", "-f", "apps/api/pom.xml", "-B", "verify");
+    }
+
+    @Test
     void rejectsArbitraryExecutableInsteadOfPassingThroughRepositoryCommand() {
         assertThatThrownBy(() -> BuilderContainerRunner.translateCommand(List.of("powershell.exe", "-Command", "whoami")))
                 .isInstanceOf(IOException.class)

@@ -429,6 +429,14 @@ public class BuilderContainerRunner {
         } else {
             throw new IOException("The isolated builder does not allow this command executable: " + executable);
         }
+
+        // A service path may have been assembled by the host-side build planner on Windows.
+        // Maven inside the Linux builder needs POSIX separators for its -f path.
+        for (int i = 0; i + 1 < translated.size(); i++) {
+            if (translated.get(i).equals("-f")) {
+                translated.set(i + 1, translated.get(i + 1).replace('\\', '/'));
+            }
+        }
         return List.copyOf(translated);
     }
 
