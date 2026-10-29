@@ -5,12 +5,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -100,8 +102,8 @@ class BuilderContainerRunnerTest {
     @Test
     void startsBuilderCopiesCheckoutAndStripsGitMetadataBeforeBuild() throws Exception {
         Path workspace = Files.createDirectory(temporaryDirectory.resolve("checkout"));
-        Files.createDirectory(workspace.resolve(".git"));
         Files.writeString(workspace.resolve("package.json"), "{\"name\":\"sample\"}");
+        initializeGitRepository(workspace);
         UUID deploymentId = UUID.randomUUID();
         when(docker.execute(anyList(), any(Duration.class), nullable(UUID.class), anyBoolean()))
                 .thenReturn(new DockerCommandClient.Result(0, ""));
@@ -110,24 +112,30 @@ class BuilderContainerRunnerTest {
         runner.start(deploymentId, workspace, "NPM");
 
         var captor = org.mockito.ArgumentCaptor.forClass((Class<List<String>>) (Class<?>) List.class);
-        verify(docker, times(7)).execute(
+        verify(docker, times(6)).execute(
                 captor.capture(), any(Duration.class), nullable(UUID.class), anyBoolean());
         List<List<String>> commands = captor.getAllValues();
+        var inputCaptor = org.mockito.ArgumentCaptor.forClass((Class<List<String>>) (Class<?>) List.class);
+        verify(docker).executeWithInput(
+                inputCaptor.capture(), any(InputStream.class), any(Duration.class), nullable(UUID.class), anyBoolean());
 
         assertThat(commands.get(0)).contains("image", "inspect", "node:22-bookworm-slim");
         assertThat(commands.get(1)).contains("--label", "dev.foundry.builder=true", "--read-only");
-        assertThat(commands.get(2)).contains("cp");
-        assertThat(commands.get(2).getLast()).isEqualTo(BuilderContainerRunner.containerName(deploymentId) + ":/workspace");
-        assertThat(commands.get(3)).contains("rm", "-rf", "/workspace/.git");
-        assertThat(commands.get(4)).contains("find", "/workspace", "-name", "mvnw", "-exec", "sed");
-        assertThat(commands.get(5)).contains("find", "/workspace", "-name", "mvnw", "-exec", "chmod", "+x");
-        assertThat(commands.get(6)).contains("chmod", "-R", "a+rwX", "/workspace");
+        assertThat(inputCaptor.getValue()).containsExactly(
+                "exec", "-i", "--user", "0:0", BuilderContainerRunner.containerName(deploymentId),
+                "tar", "-xf", "-", "-C", "/workspace");
+        assertThat(commands.get(2)).contains("rm", "-rf", "/workspace/.git");
+        assertThat(commands.get(3)).contains("find", "/workspace", "-name", "mvnw", "-exec", "sed");
+        assertThat(commands.get(4)).contains("find", "/workspace", "-name", "mvnw", "-exec", "chmod", "+x");
+        assertThat(commands.get(5)).contains("chmod", "-R", "a+rwX", "/workspace");
     }
 
     @Test
     void runsBuildCommandAsUnprivilegedUserWithAnInContainerTimeout() throws Exception {
         Path workspace = Files.createDirectory(temporaryDirectory.resolve("repo"));
         Path service = Files.createDirectory(workspace.resolve("web"));
+        Files.writeString(service.resolve("package.json"), "{\"name\":\"web\"}");
+        initializeGitRepository(workspace);
         UUID deploymentId = UUID.randomUUID();
         when(docker.execute(anyList(), any(Duration.class), nullable(UUID.class), anyBoolean()))
                 .thenReturn(new DockerCommandClient.Result(0, ""));
@@ -147,6 +155,8 @@ class BuilderContainerRunnerTest {
     @Test
     void reportsBuildTimeoutWhenContainerCommandReturnsTimeoutExitCode() throws Exception {
         Path workspace = Files.createDirectory(temporaryDirectory.resolve("timeout-repo"));
+        Files.writeString(workspace.resolve("package.json"), "{\"name\":\"timeout-sample\"}");
+        initializeGitRepository(workspace);
         UUID deploymentId = UUID.randomUUID();
         when(docker.execute(anyList(), any(Duration.class), nullable(UUID.class), anyBoolean()))
                 .thenReturn(new DockerCommandClient.Result(0, ""));
@@ -166,7 +176,37 @@ class BuilderContainerRunnerTest {
         runner.stop(deploymentId);
     }
 
+
+    private static void initializeGitRepository(Path workspace) throws Exception {
+        runGit(workspace, "init", "--quiet");
+        runGit(workspace, "config", "user.email", "foundry-tests@example.invalid");
+        runGit(workspace, "config", "user.name", "Foundry Test");
+        runGit(workspace, "add", "--", ".");
+        runGit(workspace, "commit", "--quiet", "-m", "Create isolated builder test fixture");
+    }
+
+    private static void runGit(Path workspace, String... arguments) throws Exception {
+        List<String> command = new java.util.ArrayList<>(
+                List.of("git", "-C", workspace.toAbsolutePath().toString()));
+        command.addAll(List.of(arguments));
+        Process process = new ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        if (!process.waitFor(30, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            throw new IOException("Timed out creating the Git repository used by the builder test.");
+        }
+        if (process.exitValue() != 0) {
+            throw new IOException("Git fixture command failed with exit code " + process.exitValue()
+                    + ": " + String.join(" ", command));
+        }
+    }
+
     private BuilderContainerRunner newRunner() {
+        when(docker.executeWithInput(anyList(), any(InputStream.class), any(Duration.class),
+                nullable(UUID.class), anyBoolean()))
+                .thenReturn(new DockerCommandClient.Result(0, ""));
         return new BuilderContainerRunner(
                 docker, logService,
                 "maven:3.9-eclipse-temurin-25-noble",
