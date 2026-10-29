@@ -51,7 +51,8 @@ class BuilderContainerRunnerTest {
                 "--network", "bridge",
                 "--read-only",
                 "--tmpfs", "/tmp:rw,exec,nosuid,size=2g",
-                "--tmpfs", "/workspace:rw,exec,nosuid,size=4g");
+                "--tmpfs", "/workspace:rw,exec,nosuid,size=4g",
+                "--user", "10001:10001");
         assertThat(arguments).doesNotContain("--mount", "--volume", "--publish", "-p");
         assertThat(String.join(" ", arguments)).doesNotContain("/var/run/docker.sock");
     }

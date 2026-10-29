@@ -25,6 +25,7 @@ public class DockerCommandClient {
     private static final Logger log = LoggerFactory.getLogger(DockerCommandClient.class);
     private static final int MAX_CAPTURED_OUTPUT = 64 * 1024;
     private static final int MAX_LOG_LINE_LENGTH = 4000;
+    private static final long MAX_FORWARDED_LOG_CHARACTERS = 2L * 1024L * 1024L;
 
     private final DeploymentLogService logService;
     private final String dockerExecutable;
@@ -56,6 +57,8 @@ public class DockerCommandClient {
         }
 
         StringBuilder captured = new StringBuilder();
+        java.util.concurrent.atomic.AtomicLong forwardedCharacters = new java.util.concurrent.atomic.AtomicLong();
+        java.util.concurrent.atomic.AtomicBoolean outputTruncated = new java.util.concurrent.atomic.AtomicBoolean();
         Thread reader = Thread.ofVirtual().name("foundry-docker-command-output").start(() -> {
             try (BufferedReader input = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -65,7 +68,12 @@ public class DockerCommandClient {
                         if (captured.length() < MAX_CAPTURED_OUTPUT) captured.append(line).append('\n');
                     }
                     if (forwardOutput && deploymentId != null && !line.isBlank()) {
-                        append(deploymentId, bounded(line));
+                        long total = forwardedCharacters.addAndGet(line.length() + 1L);
+                        if (total <= MAX_FORWARDED_LOG_CHARACTERS) {
+                            append(deploymentId, bounded(line));
+                        } else {
+                            outputTruncated.set(true);
+                        }
                     }
                 }
             } catch (IOException failure) {
@@ -98,6 +106,9 @@ public class DockerCommandClient {
 
         String output;
         synchronized (captured) { output = captured.toString(); }
+        if (outputTruncated.get() && deploymentId != null) {
+            append(deploymentId, "Docker command output truncated after the 2 MiB per-command log limit.");
+        }
         if (!finished) {
             throw new IOException("Docker command timed out after " + timeout.toSeconds()
                     + " seconds: " + safeExcerpt(output));

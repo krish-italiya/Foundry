@@ -50,6 +50,9 @@ public class BuilderContainerRunner {
     private static final Duration INSPECT_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration CLEANUP_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration COPY_TIMEOUT = Duration.ofMinutes(5);
+    private static final long MAX_OUTPUT_BYTES = 1024L * 1024L * 1024L;
+    private static final int MAX_OUTPUT_FILES = 10_000;
+    private static final int MAX_MAVEN_JAR_CANDIDATES = 25;
 
     private final DockerCommandClient docker;
     private final DeploymentLogService logService;
@@ -238,25 +241,50 @@ public class BuilderContainerRunner {
 
         DockerCommandClient.Result listing = docker.execute(
                 List.of("exec", "--user", "10001:10001", session.container(),
-                        "find", targetPath, "-maxdepth", "1", "-type", "f", "-name", "*.jar", "-print"),
+                        "find", targetPath, "-maxdepth", "1", "-type", "f", "-name", "*.jar",
+                        "-printf", "%s\\t%f\\n"),
                 INSPECT_TIMEOUT, deploymentId, false);
         requireSuccess(listing, "Could not enumerate Maven JAR outputs in the isolated builder");
 
         Files.createDirectories(hostTarget);
+        int copiedCandidates = 0;
         for (String line : listing.output().split("\\R")) {
-            String candidatePath = line.trim();
-            if (candidatePath.isEmpty()) continue;
-            String fileName = Path.of(candidatePath).getFileName().toString();
+            if (line.isBlank()) continue;
+            String[] fields = line.split("\\t", 2);
+            if (fields.length != 2 || !fields[0].matches("[0-9]+")) {
+                append(deploymentId, DeploymentLogSeverity.WARN,
+                        "Skipped a Maven output with unreadable size metadata.");
+                continue;
+            }
+            String fileName = fields[1];
             if (!SAFE_JAR_NAME.matcher(fileName).matches()) {
                 append(deploymentId, DeploymentLogSeverity.WARN,
                         "Skipping Maven output with an unsupported artifact filename.");
                 continue;
+            }
+            long size;
+            try {
+                size = Long.parseLong(fields[0]);
+            } catch (NumberFormatException invalidSize) {
+                append(deploymentId, DeploymentLogSeverity.WARN, "Skipped Maven output with an invalid size.");
+                continue;
+            }
+            if (size > MAX_OUTPUT_BYTES) {
+                append(deploymentId, DeploymentLogSeverity.WARN,
+                        "Skipped Maven JAR candidate exceeding the 1 GiB artifact handoff limit: " + fileName);
+                continue;
+            }
+            if (copiedCandidates >= MAX_MAVEN_JAR_CANDIDATES) {
+                append(deploymentId, DeploymentLogSeverity.WARN,
+                        "Stopped artifact handoff after 25 Maven JAR candidates.");
+                break;
             }
             DockerCommandClient.Result copied = docker.execute(
                     List.of("cp", session.container() + ":" + targetPath + "/" + fileName,
                             hostTarget.toString()),
                     COPY_TIMEOUT, deploymentId, false);
             requireSuccess(copied, "Could not copy Maven JAR output from the isolated builder");
+            copiedCandidates++;
         }
         append(deploymentId, DeploymentLogSeverity.INFO,
                 "Copied Maven JAR candidates only; intermediate classes and dependency caches remain inside the builder.");
@@ -276,14 +304,7 @@ public class BuilderContainerRunner {
                     INSPECT_TIMEOUT, deploymentId, false);
             if (exists.exitCode() != 0) continue;
 
-            DockerCommandClient.Result notSymlink = docker.execute(
-                    List.of("exec", "--user", "10001:10001", session.container(), "test", "!", "-L", output),
-                    INSPECT_TIMEOUT, deploymentId, false);
-            if (notSymlink.exitCode() != 0) {
-                append(deploymentId, DeploymentLogSeverity.WARN,
-                        "Skipped generated output directory because its root is a symbolic link: " + directory);
-                continue;
-            }
+            validateGeneratedOutput(session, output, deploymentId);
 
             Path hostOutput = service.resolve(directory).normalize();
             if (!hostOutput.startsWith(service)) {
@@ -366,7 +387,7 @@ public class BuilderContainerRunner {
                 "--tmpfs", "/tmp:rw,exec,nosuid,size=2g",
                 "--tmpfs", "/workspace:rw,exec,nosuid,size=" + workspaceTmpfsLimit,
                 "--workdir", "/workspace",
-                "--user", "0:0",
+                "--user", "10001:10001",
                 "--entrypoint", "/bin/sh",
                 image,
                 "-c", "exec sleep infinity");
@@ -457,6 +478,49 @@ public class BuilderContainerRunner {
             throw new IOException("Build output path must remain inside the deployment workspace.");
         }
         return candidate;
+    }
+
+    private void validateGeneratedOutput(BuilderSession session, String output, UUID deploymentId)
+            throws IOException, InterruptedException {
+        DockerCommandClient.Result unsupportedFile = docker.execute(
+                List.of("exec", "--user", "10001:10001", session.container(),
+                        "find", output, "!", "-type", "d", "!", "-type", "f", "-print", "-quit"),
+                INSPECT_TIMEOUT, deploymentId, false);
+        requireSuccess(unsupportedFile, "Could not inspect generated web output");
+        if (!unsupportedFile.output().isBlank()) {
+            throw new IOException("Generated web output contains a symbolic link or special file: "
+                    + safeExcerpt(unsupportedFile.output()));
+        }
+
+        DockerCommandClient.Result files = docker.execute(
+                List.of("exec", "--user", "10001:10001", session.container(),
+                        "find", output, "-type", "f", "-printf", ".\\n"),
+                INSPECT_TIMEOUT, deploymentId, false);
+        requireSuccess(files, "Could not count generated web output files");
+        if (files.output().length() >= 64 * 1024) {
+            throw new IOException("Generated web output listing exceeded the file-count inspection limit.");
+        }
+        int fileCount = (int) files.output().lines().filter(line -> !line.isBlank()).count();
+        if (fileCount > MAX_OUTPUT_FILES) {
+            throw new IOException("Generated web output exceeds the 10,000-file handoff limit.");
+        }
+
+        DockerCommandClient.Result bytes = docker.execute(
+                List.of("exec", "--user", "10001:10001", session.container(),
+                        "du", "-sb", output),
+                INSPECT_TIMEOUT, deploymentId, false);
+        requireSuccess(bytes, "Could not measure generated web output size");
+        String firstLine = bytes.output().lines().findFirst().orElse("").trim();
+        String sizeText = firstLine.split("\\s+", 2)[0];
+        long outputBytes;
+        try {
+            outputBytes = Long.parseLong(sizeText);
+        } catch (NumberFormatException invalidSize) {
+            throw new IOException("Could not parse generated web output size.");
+        }
+        if (outputBytes > MAX_OUTPUT_BYTES) {
+            throw new IOException("Generated web output exceeds the 1 GiB handoff limit.");
+        }
     }
 
     private void removeContainer(String container, UUID deploymentId) {
