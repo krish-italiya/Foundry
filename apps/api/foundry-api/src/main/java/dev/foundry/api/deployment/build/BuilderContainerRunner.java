@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,6 +31,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -135,12 +137,20 @@ public class BuilderContainerRunner {
             sessions.put(deploymentId,
                     new BuilderSession(container, workspace.toAbsolutePath().normalize(), image));
 
-            String hostSource = workspace.toAbsolutePath().normalize().toString()
-                    + (isWindows() ? "\\." : "/.");
-            DockerCommandClient.Result copied = docker.execute(
-                    List.of("cp", hostSource, container + ":/workspace"),
-                    COPY_TIMEOUT, deploymentId, false);
-            requireSuccess(copied, "Could not copy the repository into the isolated build container");
+            Path sourceArchive = createSourceArchive(workspace);
+            try (InputStream archiveInput = Files.newInputStream(sourceArchive)) {
+                DockerCommandClient.Result copied = docker.executeWithInput(
+                        List.of("exec", "-i", "--user", "0:0", container,
+                                "tar", "-xf", "-", "-C", "/workspace"),
+                        archiveInput, COPY_TIMEOUT, deploymentId, false);
+                requireSuccess(copied, "Could not extract the repository archive into the isolated build container");
+            } finally {
+                try {
+                    Files.deleteIfExists(sourceArchive);
+                } catch (IOException cleanupFailure) {
+                    log.warn("Could not remove temporary builder source archive {}.", sourceArchive, cleanupFailure);
+                }
+            }
 
             DockerCommandClient.Result removeGitMetadata = docker.execute(
                     List.of("exec", "--user", "0:0", container, "rm", "-rf", "/workspace/.git"),
@@ -279,15 +289,19 @@ public class BuilderContainerRunner {
                         "Stopped artifact handoff after 25 Maven JAR candidates.");
                 break;
             }
-            DockerCommandClient.Result copied = docker.execute(
-                    List.of("cp", session.container() + ":" + targetPath + "/" + fileName,
-                            hostTarget.toString()),
-                    COPY_TIMEOUT, deploymentId, false);
-            requireSuccess(copied, "Could not copy Maven JAR output from the isolated builder");
+            Path hostArtifact = hostTarget.resolve(fileName);
+            DockerCommandClient.Result copied = docker.executeToFile(
+                    List.of("exec", "--user", "10001:10001", session.container(),
+                            "cat", targetPath + "/" + fileName),
+                    hostArtifact, COPY_TIMEOUT, deploymentId, false);
+            requireSuccess(copied, "Could not stream Maven JAR output from the isolated builder");
+            if (!Files.isRegularFile(hostArtifact) || Files.size(hostArtifact) != size) {
+                throw new IOException("Maven JAR output size did not match the builder's reported size: " + fileName);
+            }
             copiedCandidates++;
         }
         append(deploymentId, DeploymentLogSeverity.INFO,
-                "Copied Maven JAR candidates only; intermediate classes and dependency caches remain inside the builder.");
+                "Streamed Maven JAR candidates only; intermediate classes and dependency caches remain inside the builder.");
     }
 
     /** Copies only known generated web output directories, not source mutations or dependency caches. */
@@ -409,6 +423,62 @@ public class BuilderContainerRunner {
             return id.toString().equalsIgnoreCase(value) ? Optional.of(id) : Optional.empty();
         } catch (IllegalArgumentException invalid) {
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Creates a tar archive of the checked-out commit. Git archive omits .git
+     * metadata and avoids Docker's copy-to-container operation, which is rejected
+     * by Docker when the builder has a read-only root filesystem.
+     */
+    private Path createSourceArchive(Path workspace) throws IOException, InterruptedException {
+        Path temporaryRoot = workspace.toAbsolutePath().normalize().getParent();
+        if (temporaryRoot == null) temporaryRoot = Path.of(System.getProperty("java.io.tmpdir"));
+        Files.createDirectories(temporaryRoot);
+        Path archive = Files.createTempFile(temporaryRoot, "foundry-builder-source-", ".tar");
+        Path diagnostics = Files.createTempFile(temporaryRoot, "foundry-builder-git-archive-", ".err");
+        boolean complete = false;
+        Process process = null;
+        try {
+            process = new ProcessBuilder(
+                    "git", "-C", workspace.toAbsolutePath().normalize().toString(),
+                    "archive", "--format=tar", "--output=" + archive.toAbsolutePath(), "HEAD")
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(diagnostics.toFile())
+                    .start();
+
+            boolean finished = process.waitFor(COPY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                process.waitFor();
+                throw new IOException("Timed out preparing the repository archive for the isolated builder.");
+            }
+            if (process.exitValue() != 0) {
+                throw new IOException("Could not archive the checked-out repository for the isolated builder "
+                        + "(git exit code " + process.exitValue() + "): " + safeExcerpt(Files.readString(diagnostics)));
+            }
+            if (Files.size(archive) == 0) {
+                throw new IOException("The checked-out repository produced an empty source archive.");
+            }
+            complete = true;
+            return archive;
+        } catch (InterruptedException interrupted) {
+            if (process != null) process.destroyForcibly();
+            Thread.currentThread().interrupt();
+            throw interrupted;
+        } finally {
+            try {
+                Files.deleteIfExists(diagnostics);
+            } catch (IOException cleanupFailure) {
+                log.warn("Could not remove temporary Git archive diagnostics {}.", diagnostics, cleanupFailure);
+            }
+            if (!complete) {
+                try {
+                    Files.deleteIfExists(archive);
+                } catch (IOException cleanupFailure) {
+                    log.warn("Could not remove incomplete builder source archive {}.", archive, cleanupFailure);
+                }
+            }
         }
     }
 
