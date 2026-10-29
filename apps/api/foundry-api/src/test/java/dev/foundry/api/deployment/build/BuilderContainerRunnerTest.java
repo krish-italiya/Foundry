@@ -34,7 +34,7 @@ class BuilderContainerRunnerTest {
     private final DeploymentLogService logService = mock(DeploymentLogService.class);
 
     @Test
-    void builderContainerUsesConstrainedEphemeralWorkspaceWithoutHostMounts() {
+    void builderContainerUsesConstrainedEphemeralWorkspaceWithoutHostMounts() throws Exception {
         BuilderContainerRunner runner = newRunner();
         UUID deploymentId = UUID.randomUUID();
 
@@ -203,7 +203,7 @@ class BuilderContainerRunnerTest {
         }
     }
 
-    private BuilderContainerRunner newRunner() {
+    private BuilderContainerRunner newRunner() throws IOException, InterruptedException {
         when(docker.executeWithInput(anyList(), any(InputStream.class), any(Duration.class),
                 nullable(UUID.class), anyBoolean()))
                 .thenReturn(new DockerCommandClient.Result(0, ""));
