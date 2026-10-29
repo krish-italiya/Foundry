@@ -492,3 +492,35 @@ Run Maven `clean test` and frontend `npm run build`, then test a trusted reposit
 - Maven summary: 70 tests, 0 failures, 0 errors, 0 skipped. Frontend `npm ci` and Vite production build passed (48 modules transformed).
 - A preceding CI run caught the new cleanup-retry test invoking the scheduled retry before simulated startup recovery. The test now initializes with `cleanupAfterRestart()` before asserting cleanup retry, matching the production gate.
 - Remaining: live shutdown/restart and Docker-daemon-unavailable recovery tests on the development machine. Unit tests use a scripted Docker command adapter and do not replace this final runtime exercise.
+
+
+## Entry: Isolated repository builder containers (implementation branch; verification pending)
+
+### Design implemented for the next vertical slice
+- Added DockerCommandClient to run Docker CLI arguments without shell-string interpolation and to bound captured output.
+- Added BuilderContainerRunner, gated by foundry.build.container.enabled (off by default). Maven and npm commands can be executed inside an ephemeral, resource-limited Docker container.
+- The host still performs git clone, resolves HEAD, and reads build manifests. Those steps do not invoke repository-defined Maven/npm scripts.
+- The builder receives a copy of the checkout in a size-limited tmpfs. It has a read-only container root, CPU/memory/PID limits, dropped capabilities, no-new-privileges, and no host bind mount or Docker socket. Build commands run as numeric UID/GID 10001:10001; an in-container timeout terminates time-limited commands.
+- Maven JAR candidates and known web output directories are copied back for the existing BuiltArtifact and runtime packaging flow. Builder containers are removed after each build, including failure paths; startup and periodic cleanup remove stale labeled builders and retry when Docker becomes available.
+- Maven/npm images are configurable and builder resource limits are configurable. The feature remains opt-in until CI and live Docker checks are complete.
+
+### Important boundaries and remaining validation
+- The builder uses Docker's bridge network so Maven/npm can download dependencies. No explicit egress policy is implemented.
+- A constrained container is defense in depth, not a complete sandbox for hostile code. Host checkout/manifest discovery remain outside the container, and no public repository execution is approved by this milestone.
+- Verify on Windows: full Maven tests, npm ci + frontend production build, successful trusted Express/Node build, successful Vite build, a failing build, timeout cleanup, and no leftover foundry-builder-* containers.
+- Verify that only expected output artifacts return to the host workspace and that cleanup removes Docker resources even after an interrupted build.
+
+### New terminology
+- Ephemeral builder: a temporary environment created for one build and removed when the build ends.
+- tmpfs: a temporary filesystem backed by memory rather than a host directory bind mount.
+- Bind mount: a mapping from a host filesystem path into a container; the builder avoids these so repository scripts cannot directly mutate arbitrary host paths through configured mounts.
+- Resource limits: CPU, memory, and process-count caps enforced by the container runtime.
+- Least privilege: executing untrusted build commands as a non-root user with unnecessary capabilities removed.
+- Artifact handoff: copying only the generated outputs needed by Foundry's runtime packaging stage rather than returning the whole modified build environment.
+
+### System-design / interview connections
+- Separate source acquisition, build execution, artifact selection, and runtime execution into explicit trust boundaries.
+- Treat build commands as potentially hostile even after project trust is granted. Authorization is not isolation.
+- Prefer disposable workers and explicit artifact handoff over exposing a long-lived host filesystem to repository-defined scripts.
+- Timeouts must terminate work inside the builder, not just stop waiting for the host Docker CLI.
+- Cleanup is part of the control plane's correctness contract: failed deployments must not leave an unbounded number of containers, volumes, or temporary artifacts.

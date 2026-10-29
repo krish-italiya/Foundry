@@ -1,6 +1,6 @@
 # Foundry Architecture — Repository-to-Deployment Pipeline
 
-Status: **Windows CI passed on lifecycle commit `bca66469`: 70 backend tests, 0 failures/errors/skips, plus `npm ci` and the Vite production build. The branch's trusted Express and React/Vite Docker deployments have both succeeded, and the user manually confirmed the project-scoped dashboard flow. Lifecycle code now reconciles deterministic orphan containers/images, retries uncertain cleanup, marks stranded BUILDING/STARTING/HEALTH_CHECK deployments FAILED, marks previously successful untracked runtimes INTERRUPTED, and gates the worker until startup recovery completes. The remaining validation is live Docker shutdown/restart and cleanup retry on the development machine. Docker remains opt-in and local-process mode remains disabled by default.**
+Status: **Windows CI passed on lifecycle commit `bca66469`: 70 backend tests, 0 failures/errors/skips, plus `npm ci` and the Vite production build. The branch's trusted Express and React/Vite Docker deployments have both succeeded, and the user manually confirmed the project-scoped dashboard flow. Lifecycle code now reconciles deterministic orphan containers/images, retries uncertain cleanup, marks stranded BUILDING/STARTING/HEALTH_CHECK deployments FAILED, marks previously successful untracked runtimes INTERRUPTED, and gates the worker until startup recovery completes. The remaining validation is live Docker shutdown/restart and cleanup retry on the development machine. The isolated builder is being implemented on `feat/isolated-builder-containers`; its API/test and Docker end-to-end verification is pending. Docker runtime, repository builds, and isolated builder mode remain opt-in.**
 
 ## Current path
 
@@ -22,7 +22,16 @@ RepositoryBuildService (opt-in)
             +---- per-project build trust (explicit opt-in) or administrator allowlist override
             +---- git clone of requested ref into a disposable workspace
             +---- find pom.xml / package.json, with service-path selection
-            +---- Maven verify OR npm ci (lockfile) / npm install (warned fallback), with configured test/build scripts
+            +---- select a supported Maven or npm service
+            |
+            +---- if foundry.build.container.enabled=false:
+            |       BuildCommandRunner runs Maven/npm commands on host (local-development compatibility)
+            |
+            +---- if foundry.build.container.enabled=true (feature branch; verification pending):
+                    BuilderContainerRunner starts a constrained per-build Docker container
+                    copies checkout to size-limited tmpfs; no host bind mount or Docker socket
+                    runs Maven/npm as UID 10001 with per-command timeout
+                    copies back runnable JAR candidates or generated web outputs only
             +---- capture stdout/stderr and exit status into deployment logs
             |
             v
@@ -48,7 +57,7 @@ Runtime adapter (explicitly selected)
 Persist SUCCEEDED only after health check passes
 ```
 
-This pipeline must stay disabled by default. A trusted-repository allowlist limits which source can be checked out but does **not** sandbox build scripts. Do not expose it to the public or run untrusted repositories until execution is moved into an appropriately isolated worker/runtime with resource limits and credential boundaries.
+This pipeline must stay disabled by default. A trusted-repository allowlist limits which source can be checked out but does **not** sandbox build scripts. The isolated builder moves Maven/npm execution into a constrained container, but checkout and manifest discovery remain on the host, its default bridge network permits dependency downloads, and a standard Docker container is not a complete hostile-code sandbox. Do not expose public builds before isolation, egress controls, credentials, authorization, quotas, and access controls are reviewed.
 
 ## Existing control-plane APIs
 
@@ -88,6 +97,13 @@ foundry.worker.enabled=false
 foundry.runtime.local.enabled=false
 foundry.runtime.local.sample-mode-enabled=false
 foundry.build.enabled=false
+foundry.build.container.enabled=false
+foundry.build.container.maven-image=maven:3.9-eclipse-temurin-25-noble
+foundry.build.container.node-image=node:22-bookworm-slim
+foundry.build.container.memory-limit=3g
+foundry.build.container.cpu-limit=2.0
+foundry.build.container.workspace-tmpfs-limit=4g
+foundry.build.container.image-pull-timeout-seconds=600
 foundry.build.workspace-root=.foundry/workspaces
 foundry.build.allowed-repositories=
 foundry.build.command-timeout-seconds=600
@@ -133,4 +149,4 @@ The ingress is deliberately a local-development seam, not production ingress. Ru
 2. Docker and Vite runtime paths have already succeeded for trusted Express and Ionic React/Vite repositories; the user has confirmed project-scoped navigation works.
 3. Still required: exercise graceful API shutdown and abrupt restart with Docker enabled; confirm old containers/images are removed, successful deployments become INTERRUPTED, in-flight deployments become FAILED, and queued work waits until recovery completes.
 4. Exercise cleanup with Docker Desktop temporarily unavailable and confirm scheduled retry removes orphan containers/images after Docker returns. Only then decide whether PR #13 can be made ready for review.
-5. Design a separately isolated build worker before any public repository execution. Docker alone is not a complete hostile-code sandbox.
+5. Validate the isolated builder on [Issue #14](https://github.com/krish-italiya/Foundry/issues/14): Windows Maven suite, frontend build, trusted Express and Vite deployments, failing build cleanup, and timeout cleanup. The builder still needs a policy for network egress before public use.

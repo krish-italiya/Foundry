@@ -8,10 +8,11 @@ This document is the durable restart point for a new ChatGPT conversation. Read 
 
 - Repository: https://github.com/krish-italiya/Foundry
 - Local Windows path: \`C:\Users\LENOVO\OneDrive\Desktop\Dev\Foundry\Foundry\`
-- Active branch: \`feat/docker-runtime-adapter\`
+- Previous runtime/dashboard branch: `feat/docker-runtime-adapter` at `c92ff4cfe155c0ac2810132b4a2b66898473f1ec`.
+- Current implementation branch: `feat/isolated-builder-containers` (created from the runtime branch; local checkout must fetch/switch before local testing).
 - Draft pull request: https://github.com/krish-italiya/Foundry/pull/13
 - Related acceptance-criteria issue: https://github.com/krish-italiya/Foundry/issues/12
-- PR #13 has **not** been merged. Fetch/pull the latest branch before making changes; the branch head may advance after this note.
+- PR #13 has **not** been merged. Keep it in draft while lifecycle checks remain incomplete. The isolated-builder implementation belongs in a separate PR linked to Issue #14.
 
 ## Product goal
 
@@ -57,11 +58,11 @@ The user reported that project navigation, project-level tabs, deployment search
 
 ## Immediate next steps
 
-1. Pull the latest `origin/feat/docker-runtime-adapter` before any further edits.
-2. Automated verification passed at commit `bca66469a9c208b980403b319d32a3c84d9a059f`: Windows CI ran 70 Maven tests (0 failures/errors/skips), then `npm ci` and `npm run build` successfully. See [workflow run #8](https://github.com/krish-italiya/Foundry/actions/runs/40740356945).
-3. With Docker Desktop running, validate graceful API shutdown and abrupt restart: existing containers/images should be removed; previously successful rows should become `INTERRUPTED`; stranded `BUILDING`/`STARTING`/`HEALTH_CHECK` rows should become `FAILED`; queued work should wait until recovery completes.
-4. Exercise cleanup when Docker Desktop is temporarily unavailable and confirm the scheduled retry removes orphaned containers/images once Docker returns.
-5. Keep PR #13 in draft until the live lifecycle checks pass; then update the PR status truthfully.
+1. Switch the local checkout to `origin/feat/isolated-builder-containers` after fetching; do not switch with local edits present.
+2. Isolated-builder implementation added DockerCommandClient, BuilderContainerRunner, opt-in routing from RepositoryBuildService, resource-limit settings, cleanup, and focused tests. It is not verified yet; run the Windows Maven suite and frontend production build.
+3. Test with `FOUNDRY_BUILD_CONTAINER_ENABLED=true` alongside the existing build/worker/Docker-runtime flags. Verify trusted Express and Vite deployments, a deliberately failing build, timeout cleanup, and zero leftover `foundry-builder-*` containers.
+4. Keep builder isolation opt-in; it uses Docker bridge networking for dependency downloads, and checkout/manifest discovery remain on the Windows host. Do not expose arbitrary public repository builds.
+5. Separately finish the live Docker shutdown/restart and cleanup-retry checks for PR #13 before changing that PR's draft status.
 
 ## Important safety boundary
 

@@ -46,6 +46,8 @@ public class RepositoryBuildService {
     private static final Duration CHECKOUT_TIMEOUT = Duration.ofMinutes(2);
 
     private final BuildCommandRunner commandRunner;
+    private final BuilderContainerRunner builderContainerRunner;
+    private final boolean isolatedBuildEnabled;
     private final DeploymentLogService logService;
     private final ProjectRepository projectRepository;
     private final JsonMapper objectMapper;
@@ -55,13 +57,17 @@ public class RepositoryBuildService {
 
     public RepositoryBuildService(
             BuildCommandRunner commandRunner,
+            BuilderContainerRunner builderContainerRunner,
             DeploymentLogService logService,
             JsonMapper objectMapper,
             ProjectRepository projectRepository,
             @Value("${foundry.build.workspace-root:.foundry/workspaces}") String workspaceRoot,
             @Value("${foundry.build.allowed-repositories:}") String allowedRepositories,
-            @Value("${foundry.build.command-timeout-seconds:600}") long commandTimeoutSeconds) {
+            @Value("${foundry.build.command-timeout-seconds:600}") long commandTimeoutSeconds,
+            @Value("$" + "{foundry.build.container.enabled:false}") boolean isolatedBuildEnabled) {
         this.commandRunner = commandRunner;
+        this.builderContainerRunner = builderContainerRunner;
+        this.isolatedBuildEnabled = isolatedBuildEnabled;
         this.logService = logService;
         this.objectMapper = objectMapper;
         this.projectRepository = projectRepository;
@@ -101,7 +107,9 @@ public class RepositoryBuildService {
         if (!administratorAllowlisted && !project.isBuildTrusted()) {
             throw new RepositoryBuildException(
                     "This repository is not trusted for builds yet. Open the project in Foundry and enable Build trust. "
-                            + "Build commands and repository-defined scripts execute on this local machine.");
+                            + (isolatedBuildEnabled
+                                    ? "Maven/npm commands run in a disposable Docker builder; the source checkout remains local."
+                                    : "Build commands and repository-defined scripts execute on this local machine."));
         }
         validateRef(sourceRef);
         String servicePath = normalizeServicePath(requestedServicePath);
@@ -142,6 +150,10 @@ public class RepositoryBuildService {
                     "Selected service path '" + displayPath(workspace, descriptor.path())
                             + "' using " + descriptor.ecosystem() + ".");
 
+            if (isolatedBuildEnabled) {
+                builderContainerRunner.start(deploymentId, workspace, descriptor.ecosystem());
+            }
+
             BuiltArtifact artifact = switch (descriptor.ecosystem()) {
                 case "MAVEN" -> buildMaven(deploymentId, workspace, descriptor);
                 case "NPM" -> buildNpm(deploymentId, workspace, descriptor);
@@ -165,6 +177,7 @@ public class RepositoryBuildService {
             Thread.currentThread().interrupt();
             throw new RepositoryBuildException("Repository build was interrupted.", interrupted);
         } finally {
+            if (isolatedBuildEnabled) builderContainerRunner.stop(deploymentId);
             if (!keepWorkspace) {
                 try {
                     deleteTree(workspace);
@@ -307,6 +320,16 @@ public class RepositoryBuildService {
         return normalized;
     }
 
+    private void runBuildCommand(
+            UUID deploymentId, Path workingDirectory, List<String> command,
+            Duration timeout, Map<String, String> environment) throws IOException, InterruptedException {
+        if (isolatedBuildEnabled) {
+            builderContainerRunner.run(deploymentId, workingDirectory, command, timeout, environment);
+        } else {
+            commandRunner.run(deploymentId, workingDirectory, command, timeout, environment);
+        }
+    }
+
     private BuiltArtifact buildMaven(
             UUID deploymentId,
             Path workspace,
@@ -335,7 +358,8 @@ public class RepositoryBuildService {
 
         append(deploymentId, DeploymentLogStream.DEPLOYMENT,
                 DeploymentLogSeverity.INFO, "Maven build started: verify lifecycle (tests and package).");
-        commandRunner.run(deploymentId, commandDirectory, command, commandTimeout, Map.of("CI", "true"));
+        runBuildCommand(deploymentId, commandDirectory, command, commandTimeout, Map.of("CI", "true"));
+        if (isolatedBuildEnabled) builderContainerRunner.copyMavenJarCandidates(deploymentId, serviceDirectory);
 
         Path artifactPath;
         try (var targets = Files.list(serviceDirectory.resolve("target"))) {
@@ -386,20 +410,20 @@ public class RepositoryBuildService {
             append(deploymentId, DeploymentLogStream.DEPLOYMENT,
                     DeploymentLogSeverity.INFO,
                     "Using npm ci because a reproducible npm lockfile is present.");
-            commandRunner.run(deploymentId, serviceDirectory,
+            runBuildCommand(deploymentId, serviceDirectory,
                     concat(npmPrefix, List.of("ci")), commandTimeout, Map.of("CI", "true"));
         } else {
             append(deploymentId, DeploymentLogStream.DEPLOYMENT,
                     DeploymentLogSeverity.WARN,
                     "No package-lock.json or npm-shrinkwrap.json was found. Falling back to npm install; "
                             + "dependency versions may change between deployments until a lockfile is committed.");
-            commandRunner.run(deploymentId, serviceDirectory,
+            runBuildCommand(deploymentId, serviceDirectory,
                     concat(npmPrefix, List.of("install")), commandTimeout, Map.of("CI", "true"));
         }
 
         String testScript = scripts.path("test").asText("");
         if (usableScript(testScript)) {
-            commandRunner.run(deploymentId, serviceDirectory,
+            runBuildCommand(deploymentId, serviceDirectory,
                     concat(npmPrefix, List.of("test")), commandTimeout, Map.of("CI", "true"));
         } else {
             append(deploymentId, DeploymentLogStream.DEPLOYMENT,
@@ -408,12 +432,14 @@ public class RepositoryBuildService {
 
         String buildScript = scripts.path("build").asText("");
         if (usableScript(buildScript)) {
-            commandRunner.run(deploymentId, serviceDirectory,
+            runBuildCommand(deploymentId, serviceDirectory,
                     concat(npmPrefix, List.of("run", "build")), commandTimeout, Map.of("CI", "true"));
         } else if (!usableScript(scripts.path("start").asText(""))) {
             throw new RepositoryBuildException(
                     "No usable npm build or start script was found in package.json.");
         }
+
+        if (isolatedBuildEnabled) builderContainerRunner.copyNpmOutputs(deploymentId, serviceDirectory);
 
         boolean preview = usableScript(scripts.path("preview").asText(""));
         boolean start = usableScript(scripts.path("start").asText(""));
